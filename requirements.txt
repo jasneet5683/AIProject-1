@@ -2,7 +2,7 @@ fastapi==0.109.0
 uvicorn[standard]==0.27.0
 langchain==0.1.7
 langchain-openai==0.1.3
-langchain-community==0.0.20
+langchain-community==0.0.83
 PyPDF2==3.0.1
 faiss-cpu==1.13.1
 python-dotenv==1.0.1
