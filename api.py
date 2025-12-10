@@ -41,7 +41,7 @@ def load_document_on_startup():
     global vector_store, document_loaded
     
     try:
-        pdf_path = "HLD.pdf"
+        pdf_path = "WeeklyStatus_12Dec-2025.pdf"
         
         if not os.path.exists(pdf_path):
             print(f"⚠️  Warning: {pdf_path} not found in project folder")
@@ -124,3 +124,4 @@ def chat(request: PromptRequest):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
