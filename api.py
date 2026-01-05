@@ -1,12 +1,11 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from langchain_openai import ChatOpenAI
 from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings
-from langchain_text_splitters import CharacterTextSplitter
-from PyPDF2 import PdfReader
-import io
+# We use pandas for Excel processing
+import pandas as pd
 import os
 from dotenv import load_dotenv
 
@@ -37,37 +36,45 @@ class PromptRequest(BaseModel):
     prompt: str
 
 def load_document_on_startup():
-    """Load PDF from backend folder on startup"""
+    """Load Excel from backend folder on startup"""
     global vector_store, document_loaded
     
     try:
-        pdf_path = "WeeklyStatus_12Dec-2025.pdf"
+        # 1. Update your file name here
+        excel_path = "ProjectPlan.xlsx" 
         
-        if not os.path.exists(pdf_path):
-            print(f"⚠️  Warning: {pdf_path} not found in project folder")
+        if not os.path.exists(excel_path):
+            print(f"⚠️  Warning: {excel_path} not found in project folder")
             document_loaded = False
             return
         
-        # Read PDF
-        with open(pdf_path, "rb") as file:
-            pdf_reader = PdfReader(file)
-            text = ""
-            for page in pdf_reader.pages:
-                text += page.extract_text()
+        print(f"✅ Reading Excel file...")
         
-        print(f"✅ Extracting text from PDF...")
+        # 2. Read the Excel file
+        # 'fillna' replaces empty cells with "N/A" to prevent errors
+        df = pd.read_excel(excel_path).fillna("N/A")
         
-        # Split text into chunks
-        text_splitter = CharacterTextSplitter(
-            separator="\n",
-            chunk_size=1000,
-            chunk_overlap=200,
-            length_function=len,
-        )
-        chunks = text_splitter.split_text(text)
-        print(f"✅ Created {len(chunks)} chunks from document")
+        chunks = []
         
-        # Create embeddings and vector store
+        # 3. Iterate through rows and convert them to structured text
+        # This gives the AI context about what each value represents.
+        for index, row in df.iterrows():
+            row_text = (
+                f"Task Id: {row.get('Task Id', 'N/A')}\n"
+                f"Task Name: {row.get('Task Name', 'N/A')}\n"
+                f"Start Date: {row.get('Start Date', 'N/A')}\n"
+                f"Finish Date: {row.get('Finish Date', 'N/A')}\n"
+                f"Duration: {row.get('Duration', 'N/A')}\n"
+                f"Predecessors: {row.get('Predecessors', 'N/A')}\n"
+                f"Resource: {row.get('Resource', 'N/A')}"
+            )
+            chunks.append(row_text)
+
+        print(f"✅ Processed {len(chunks)} rows (tasks) from Excel")
+        
+        # 4. Create embeddings and vector store
+        # Note: We pass the list of row_strings directly. 
+        # Since rows are usually short, we don't strictly need a TextSplitter here.
         print(f"✅ Creating embeddings...")
         embeddings = OpenAIEmbeddings(api_key=api_key)
         vector_store = FAISS.from_texts(chunks, embeddings)
@@ -86,7 +93,7 @@ async def startup_event():
 @app.get("/")
 def read_root():
     """Health check endpoint"""
-    return {"status": "running", "message": "AI Document Assistant API"}
+    return {"status": "running", "message": "AI Excel Assistant API"}
 
 @app.get("/api/status")
 def get_status():
@@ -104,16 +111,21 @@ def chat(request: PromptRequest):
     try:
         if not document_loaded or vector_store is None:
             return {
-                "response": "Document is not loaded. Please add 'document.pdf' to the backend.",
+                "response": "Excel file is not loaded. Please add the .xlsx file to the backend.",
                 "status": "error"
             }
         
-        # Search similar documents
-        docs = vector_store.similarity_search(request.prompt, k=3)
-        context = "\n".join([doc.page_content for doc in docs])
+        # Search similar documents (Retrieve top 5 relevant rows/tasks)
+        docs = vector_store.similarity_search(request.prompt, k=5)
+        context = "\n\n---\n".join([doc.page_content for doc in docs])
         
         # Create prompt with context
-        full_prompt = f"Context from document:\n{context}\n\nQuestion: {request.prompt}\n\nAnswer:"
+        full_prompt = (
+            f"You are a Project Management AI helper. Use the following project tasks to answer the question.\n\n"
+            f"Context Data:\n{context}\n\n"
+            f"Question: {request.prompt}\n\n"
+            f"Answer:"
+        )
         
         llm = ChatOpenAI(api_key=api_key, model="gpt-3.5-turbo")
         response = llm.invoke(full_prompt)
@@ -124,4 +136,3 @@ def chat(request: PromptRequest):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
