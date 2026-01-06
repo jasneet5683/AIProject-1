@@ -1,13 +1,10 @@
 import json
 import os
-import io
 import pandas as pd
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from langchain_openai import ChatOpenAI
-from langchain_community.vectorstores import FAISS
-from langchain_openai import OpenAIEmbeddings
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -15,7 +12,7 @@ load_dotenv()
 
 app = FastAPI()
 
-# Enable CORS for frontend communication
+# Enable CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -24,155 +21,126 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Get API key from environment
 api_key = os.getenv("OPENAI_API_KEY")
 
-if not api_key:
-    raise ValueError("OPENAI_API_KEY environment variable not set!")
-
 # Global variables
-vector_store = None
+excel_text_context = ""
 document_loaded = False
 
 class PromptRequest(BaseModel):
     prompt: str
 
-def load_document_on_startup():
-    """Load Excel from backend folder on startup"""
-    global vector_store, document_loaded
+def load_excel_global():
+    """
+    Loads the entire Excel file into a text string.
+    This ensures the AI sees ALL data, not just bits and pieces.
+    """
+    global excel_text_context, document_loaded
     
+    excel_path = "ProjectPlan.xlsx" 
+    
+    if not os.path.exists(excel_path):
+        print(f"⚠️ Warning: {excel_path} not found.")
+        document_loaded = False
+        return
+
     try:
-        # File name must match what you upload to Render
-        excel_path = "ProjectPlan.xlsx" 
-        
-        if not os.path.exists(excel_path):
-            print(f"⚠️  Warning: {excel_path} not found in project folder")
-            document_loaded = False
-            return
-        
         print(f"✅ Reading Excel file: {excel_path}...")
         
-        # Read the Excel file and handle missing values
+        # Read Excel
         df = pd.read_excel(excel_path).fillna("N/A")
         
-        # Ensure dates are strings to avoid timestamp issues
-        if 'Start Date' in df.columns:
-            df['Start Date'] = df['Start Date'].astype(str)
-        if 'Finish Date' in df.columns:
-            df['Finish Date'] = df['Finish Date'].astype(str)
+        # Convert Dates to string to prevent format errors
+        for col in df.columns:
+            if "date" in col.lower() or "time" in col.lower():
+                df[col] = df[col].astype(str)
 
-        chunks = []
+        # Convert the ENTIRE dataframe to a CSV-style string
+        # This gives the AI a perfect view of the data structure
+        excel_text_context = df.to_csv(index=False)
         
-        # Iterate through rows and convert them to context text
-        for index, row in df.iterrows():
-            row_text = (
-                f"Task Id: {row.get('Task Id', 'N/A')}\n"
-                f"Task Name: {row.get('Task Name', 'N/A')}\n"
-                f"Start Date: {row.get('Start Date', 'N/A')}\n"
-                f"Finish Date: {row.get('Finish Date', 'N/A')}\n"
-                f"Duration: {row.get('Duration', 'N/A')}\n"
-                f"Predecessors: {row.get('Predecessors', 'N/A')}\n"
-                f"Resource: {row.get('Resource', 'N/A')}"
-            )
-            chunks.append(row_text)
-
-        print(f"✅ Processed {len(chunks)} rows (tasks) from Excel")
-        
-        # Create embeddings and vector store
-        print(f"✅ Creating embeddings...")
-        embeddings = OpenAIEmbeddings(api_key=api_key)
-        vector_store = FAISS.from_texts(chunks, embeddings)
         document_loaded = True
+        print(f"✅ Data Loaded! ({len(df)} rows)")
         
-        print(f"✅ Document loaded successfully!")
     except Exception as e:
-        print(f"❌ Error loading document: {str(e)}")
+        print(f"❌ Error loading Excel: {str(e)}")
         document_loaded = False
 
 @app.on_event("startup")
 async def startup_event():
-    """Load document when server starts"""
-    load_document_on_startup()
+    load_excel_global()
 
 @app.get("/")
 def read_root():
-    """Health check endpoint"""
-    return {"status": "running", "message": "AI Project Assistant API"}
+    return {"status": "running"}
 
 @app.get("/api/status")
 def get_status():
-    """Check if document is loaded"""
-    return {
-        "document_loaded": document_loaded,
-        "status": "ready" if document_loaded else "Excel file not found"
-    }
+    return {"document_loaded": document_loaded}
 
 @app.post("/api/chat")
 def chat(request: PromptRequest):
-    """Chat with document context and support Graph AND Table extraction"""
-    global vector_store
+    global excel_text_context
     
     try:
-        if not document_loaded or vector_store is None:
-            return {
-                "response": "Excel file is not loaded. Please upload 'ProjectPlan.xlsx'.",
-                "status": "error"
-            }
+        if not document_loaded:
+            return {"response": "Excel file not loaded.", "status": "error"}
+
+        # SYSTEM INSTRUCTION
+        # We pass the 'excel_text_context' directly into the prompt.
+        system_instruction = f"""
+        You are an expert Project Management AI. 
+        Below is the COMPLETE DATA from the Project Plan Excel file:
         
-        # 1. Search similar documents
-        docs = vector_store.similarity_search(request.prompt, k=15)
-        context = "\n\n---\n".join([doc.page_content for doc in docs])
+        --- START OF DATA ---
+        {excel_text_context}
+        --- END OF DATA ---
+
+        INSTRUCTIONS:
+        1. Answer based ONLY on the data above. Be accurate.
+        2. If asked for a specific value (date, duration), look it up exactly.
         
-        # 2. UPDATED System Instruction
-        system_instruction = """
-        You are a Project Management AI Assistant. Use the provided Excel context to answer.
+        OUTPUT FORMATS:
         
-        OUTPUT FORMAT INSTRUCTIONS:
-        
-        1. **Text Answer**: For general questions, reply with normal text.
-        
-        2. **Table Request**: If the user asks for a LIST, TABLE, COMPARISON, or GRID, return a JSON object:
-           {
+        A) If user asks for a TABLE/LIST:
+           Return ONLY this raw JSON (no markdown):
+           {{
              "is_table": true,
-             "title": "Table Title",
-             "columns": ["Column A", "Column B", "Column C"],
-             "rows": [
-               ["Row1 ColA", "Row1 ColB", "Row1 ColC"],
-               ["Row2 ColA", "Row2 ColB", "Row2 ColC"]
-             ],
-             "summary": "Brief summary of the table."
-           }
-        
-        3. **Chart Request**: If the user asks for a GRAPH/CHART, return a JSON object:
-           {
+             "title": "Title Here",
+             "columns": ["Col 1", "Col 2"],
+             "rows": [ ["Val 1", "Val 2"], ["Val 3", "Val 4"] ],
+             "summary": "Short summary."
+           }}
+
+        B) If user asks for a CHART/GRAPH:
+           Return ONLY this raw JSON (no markdown):
+           {{
              "is_chart": true,
              "chart_type": "bar",
              "title": "Chart Title",
-             "data": { "labels": ["A", "B"], "values": [10, 20] },
-             "summary": "Brief summary."
-           }
-
-        IMPORTANT: Do not wrap JSON in Markdown (no ```json). Return raw JSON string only.
+             "data": {{ "labels": ["A", "B"], "values": [10, 20] }},
+             "summary": "Short summary."
+           }}
+           
+        C) Otherwise, return plain text.
         """
 
-        full_prompt = (
-            f"{system_instruction}\n\n"
-            f"Context Data from Excel:\n{context}\n\n"
-            f"User Question: {request.prompt}\n\n"
-            f"Answer:"
-        )
+        # Call OpenAI
+        llm = ChatOpenAI(api_key=api_key, model="gpt-3.5-turbo", temperature=0)
         
-        llm = ChatOpenAI(api_key=api_key, model="gpt-3.5-turbo")
+        # Combine instructions + user question
+        full_prompt = f"{system_instruction}\n\nUser Question: {request.prompt}"
+        
         response = llm.invoke(full_prompt)
         content = response.content.strip()
         
-        # 3. Clean and Parse Response
-        cleaned_content = content.replace("```json", "").replace("```", "").strip()
+        # Clean potential Markdown formatting
+        clean_content = content.replace("```json", "").replace("```", "").strip()
 
+        # Try to parse JSON for Tables/Charts
         try:
-            data_obj = json.loads(cleaned_content)
+            data_obj = json.loads(clean_content)
             
-            # CHECK FOR CHART
             if data_obj.get("is_chart") is True:
                 return {
                     "response": data_obj["summary"],
@@ -181,7 +149,6 @@ def chat(request: PromptRequest):
                     "status": "success"
                 }
             
-            # CHECK FOR TABLE (New!)
             if data_obj.get("is_table") is True:
                  return {
                     "response": data_obj["summary"],
@@ -189,11 +156,10 @@ def chat(request: PromptRequest):
                     "type": "table",
                     "status": "success"
                 }
-
-        except json.JSONDecodeError:
+        except:
+            # Not JSON, just normal text
             pass
 
-        # Return standard text
         return {
             "response": content,
             "type": "text",
@@ -205,6 +171,4 @@ def chat(request: PromptRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    # 0.0.0.0 is required for Render
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
