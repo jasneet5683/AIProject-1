@@ -5,15 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Jasneet AI Assistant</title>
     
-    <!-- 🔴 CHART.JS CDN - Required for Graphs -->
+    <!-- Chart.js for Graphs -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -30,350 +26,228 @@
             border-radius: 10px;
             box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
             width: 100%;
-            max-width: 600px;
+            max-width: 700px; /* Made slightly wider for tables */
             padding: 30px;
+            display: flex;
+            flex-direction: column;
+            height: 90vh; /* Fixed height for better scrolling */
         }
         
-        h1 {
-            text-align: center;
-            color: #333;
-            margin-bottom: 10px;
-            font-size: 28px;
-        }
+        h1 { text-align: center; color: #333; margin-bottom: 10px; font-size: 24px; }
         
-        .status-bar {
-            background: #f0f0f0;
-            padding: 12px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            text-align: center;
-            font-weight: bold;
-            font-size: 14px;
-        }
-        
-        .status-bar.ready {
-            background: #d4edda;
-            color: #155724;
-        }
-        
-        .status-bar.loading {
-            background: #fff3cd;
-            color: #856404;
-        }
-        
-        .status-bar.error {
-            background: #f8d7da;
-            color: #721c24;
-        }
+        .status-bar { padding: 8px; border-radius: 6px; margin-bottom: 15px; text-align: center; font-size: 13px; font-weight: bold;}
+        .status-bar.ready { background: #d4edda; color: #155724; }
+        .status-bar.loading { background: #fff3cd; color: #856404; }
+        .status-bar.error { background: #f8d7da; color: #721c24; }
         
         .chat-box {
+            flex: 1; /* Fills remaining space */
             border: 1px solid #ddd;
             border-radius: 8px;
             padding: 15px;
-            height: 400px;
             overflow-y: auto;
-            margin-bottom: 20px;
+            margin-bottom: 15px;
             background: #f9f9f9;
         }
         
-        .message {
-            margin-bottom: 15px;
-            padding: 12px 15px;
-            border-radius: 8px;
-            word-wrap: break-word;
-            animation: slideIn 0.3s ease-in;
-        }
+        .message { margin-bottom: 15px; padding: 12px 15px; border-radius: 8px; font-size: 14px; line-height: 1.5; }
+        .user-message { background: #667eea; color: white; align-self: flex-end; margin-left: 50px; text-align: right; }
+        .ai-message { background: #e0e0e0; color: #333; margin-right: 50px; }
         
-        @keyframes slideIn {
-            from {
-                opacity: 0;
-                transform: translateY(10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
+        /* --- 📊 CHART STYLES --- */
+        .chart-container { background: white; border: 1px solid #ddd; border-radius: 8px; padding: 10px; margin-top: 10px; }
         
-        .user-message {
-            background: #667eea;
-            color: white;
-            margin-left: 50px;
-            text-align: right;
-            border-bottom-right-radius: 0;
-        }
-        
-        .ai-message {
-            background: #e0e0e0;
-            color: #333;
-            margin-right: 50px;
-            border-bottom-left-radius: 0;
-        }
-
-        /* 🆕 STYLES FOR CHARTS */
-        .chart-container {
-            background: white;
-            border: 1px solid #e0e0e0;
-            border-radius: 8px;
-            padding: 15px;
+        /* --- ▦ TABLE STYLES (NEW) --- */
+        .table-container {
+            overflow-x: auto; /* Scroll horizontally if table is wide */
             margin-top: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        
-        .chart-title {
-            font-weight: bold;
-            color: #333;
-            margin-bottom: 10px;
-            font-size: 16px;
-            text-align: center;
-        }
-        
-        .input-group {
-            display: flex;
-            gap: 10px;
-        }
-        
-        input[type="text"] {
-            flex: 1;
-            padding: 12px;
-            border: 1px solid #ddd;
+            background: white;
             border-radius: 8px;
-            font-size: 16px;
-            outline: none;
-            transition: border-color 0.3s;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
         }
-        
-        input[type="text"]:focus {
-            border-color: #667eea;
-            box-shadow: 0 0 5px rgba(102, 126, 234, 0.3);
+        .chat-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
         }
-        
-        .input-group button {
-            padding: 12px 25px;
-            background: #667eea;
+        .chat-table th {
+            background-color: #667eea;
             color: white;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: bold;
-            transition: all 0.3s;
+            text-align: left;
+            padding: 10px;
         }
+        .chat-table td {
+            border-bottom: 1px solid #eee;
+            padding: 8px 10px;
+            color: #333;
+        }
+        .chat-table tr:last-child td { border-bottom: none; }
+        .chat-table tr:nth-child(even) { background-color: #f8f9fa; }
         
-        .input-group button:hover {
-            background: #764ba2;
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-        }
-        
-        .input-group button:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-            transform: none;
-        }
-        
-        .loading-text {
-            color: #999;
-            font-style: italic;
-            text-align: center;
-        }
-        
-        .error-message {
-            background: #ffebee;
-            color: #c62828;
-        }
-        
-        .info-box {
-            background: #e3f2fd;
-            color: #1565c0;
-            padding: 12px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            border-left: 4px solid #1565c0;
-            font-size: 14px;
-        }
+        /* --- INPUT STYLES --- */
+        .input-group { display: flex; gap: 10px; }
+        input[type="text"] { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 8px; outline: none; }
+        button { padding: 12px 25px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        button:hover { background: #764ba2; }
+        button:disabled { background: #ccc; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>📚 Jasneet Test AI Project</h1>
+        <h1>📚 Jasneet AI Project</h1>
         
-        <!-- Status Bar -->
-        <div class="status-bar loading" id="statusBar">
-            🔄 Checking document status...
+        <div class="status-bar loading" id="statusBar">🔄 Connecting...</div>
+        
+        <div class="chat-box" id="chatBox">
+            <div class="message ai-message">
+                Hello! You can ask me to:<br>
+                1. Answer questions 📝<br>
+                2. Create Charts 📊 (e.g., "Graph duration by task")<br>
+                3. Create Tables ▦ (e.g., "List all tasks and start dates")
+            </div>
         </div>
         
-        <!-- Info Box -->
-        <div class="info-box">
-            💡 <strong>Note:</strong> You can ask standard questions or request charts! Try: <em>"Show a bar chart of duration by task."</em>
-        </div>
-        
-        <!-- Chat Section -->
-        <div class="chat-box" id="chatBox"></div>
-        
-        <!-- Input Section -->
         <div class="input-group">
-            <input 
-                type="text" 
-                id="userInput" 
-                placeholder="Ask a question about the document..." 
-                onkeypress="if(event.key === 'Enter') sendMessage()"
-                disabled
-            >
+            <input type="text" id="userInput" placeholder="Type here..." disabled onkeypress="if(event.key === 'Enter') sendMessage()">
             <button id="sendBtn" onclick="sendMessage()" disabled>Send</button>
         </div>
     </div>
 
     <script>
-        // 🔴 Make sure this matches your deployed Render URL exactly
         const API_URL = "https://aiproject-1-ipxt.onrender.com";
-        
-        // Check document status on page load
-        window.addEventListener("load", checkDocumentStatus);
-        
-        function checkDocumentStatus() {
-            const statusBar = document.getElementById("statusBar");
-            const userInput = document.getElementById("userInput");
-            const sendBtn = document.getElementById("sendBtn");
-            
+
+        window.addEventListener("load", checkStatus);
+
+        function checkStatus() {
             fetch(`${API_URL}/api/status`)
-                .then(res => res.json())
-                .then(data => {
-                    if (data.document_loaded) {
-                        statusBar.className = "status-bar ready";
-                        statusBar.textContent = "✅ Document loaded and ready!";
-                        userInput.disabled = false;
-                        sendBtn.disabled = false;
-                        userInput.focus();
+                .then(r => r.json())
+                .then(d => {
+                    const sb = document.getElementById("statusBar");
+                    if(d.document_loaded) {
+                        sb.className = "status-bar ready"; sb.innerText = "✅ System Ready";
+                        toggleInput(true);
                     } else {
-                        statusBar.className = "status-bar error";
-                        statusBar.textContent = "❌ Document not found. Ensure 'ProjectPlan.xlsx' is uploaded.";
-                        userInput.disabled = true;
-                        sendBtn.disabled = true;
+                        sb.className = "status-bar error"; sb.innerText = "❌ Excel not loaded";
                     }
                 })
-                .catch(err => {
-                    statusBar.className = "status-bar error";
-                    statusBar.textContent = "❌ Cannot connect to server. Check Render logs.";
-                    userInput.disabled = true;
-                    sendBtn.disabled = true;
+                .catch(() => {
+                    document.getElementById("statusBar").innerText = "❌ Offline";
                 });
         }
-        
+
+        function toggleInput(enable) {
+            document.getElementById("userInput").disabled = !enable;
+            document.getElementById("sendBtn").disabled = !enable;
+        }
+
         function sendMessage() {
             const input = document.getElementById("userInput");
-            const chatBox = document.getElementById("chatBox");
-            const message = input.value.trim();
-            
-            if (!message) return;
-            
-            // Display user message
-            addMessage(message, "user-message");
+            const txt = input.value.trim();
+            if(!txt) return;
+
+            addMessage(txt, "user-message");
             input.value = "";
-            input.disabled = true;
-            
-            // Show loading message
-            const loadingId = addMessage("⏳ Thinking...", "ai-message loading-text");
-            
-            // Send to backend
+            toggleInput(false);
+
+            const loadId = addMessage("⏳ Thinking...", "ai-message");
+
             fetch(`${API_URL}/api/chat`, {
                 method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({ prompt: message })
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ prompt: txt })
             })
-            .then(res => res.json())
+            .then(r => r.json())
             .then(data => {
-                // Remove loading message
-                document.getElementById(loadingId).remove();
+                document.getElementById(loadId).remove();
                 
-                if (data.status === "error") {
-                    addMessage("❌ Error: " + data.response, "ai-message error-message");
-                } 
-                else if (data.type === "chart") {
-                    // 🆕 IF IT IS A CHART, RENDER IT
-                    addMessage(data.response, "ai-message");
+                // 1. Show the Summary Text
+                addMessage(data.response, "ai-message");
+
+                // 2. Check for Table
+                if(data.type === "table") {
+                    renderTable(data.table_data);
+                }
+                // 3. Check for Chart
+                else if(data.type === "chart") {
                     renderChart(data.chart_data);
                 }
-                else {
-                    // NORMAL TEXT
-                    addMessage(data.response, "ai-message");
-                }
             })
-            .catch(err => {
-                document.getElementById(loadingId).remove();
-                addMessage("❌ Connection error: " + err.message, "ai-message error-message");
+            .catch(e => {
+                document.getElementById(loadId).innerText = "Error: " + e;
             })
             .finally(() => {
-                input.disabled = false;
+                toggleInput(true);
                 input.focus();
             });
         }
-        
-        // 🆕 CHART RENDERING FUNCTION
-        function renderChart(chartData) {
-            const chatBox = document.getElementById("chatBox");
-            
-            // Create container
-            const container = document.createElement("div");
-            container.className = "chart-container";
-            
-            // Add Title
-            const title = document.createElement("div");
-            title.className = "chart-title";
-            title.textContent = chartData.title;
-            container.appendChild(title);
 
-            // Create canvas
-            const canvas = document.createElement("canvas");
-            canvas.id = "chart-" + Date.now(); // Unique ID
-            // Set a fixed height for better visibility
-            canvas.style.maxHeight = "300px"; 
-            container.appendChild(canvas);
+        // --- ▦ RENDER TABLE FUNCTION ---
+        function renderTable(tableData) {
+            const chatBox = document.getElementById("chatBox");
+            const container = document.createElement("div");
+            container.className = "table-container";
+
+            let html = `<table class="chat-table"><thead><tr>`;
+            
+            // Add Headers
+            tableData.columns.forEach(col => {
+                html += `<th>${col}</th>`;
+            });
+            html += `</tr></thead><tbody>`;
+
+            // Add Rows
+            tableData.rows.forEach(row => {
+                html += `<tr>`;
+                row.forEach(cell => {
+                    html += `<td>${cell}</td>`;
+                });
+                html += `</tr>`;
+            });
+
+            html += `</tbody></table>`;
+            container.innerHTML = html;
             
             chatBox.appendChild(container);
             chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        // --- 📊 RENDER CHART FUNCTION ---
+        function renderChart(chartData) {
+            const chatBox = document.getElementById("chatBox");
+            const div = document.createElement("div");
+            div.className = "chart-container";
             
-            // Draw Chart
-            const ctx = document.getElementById(canvas.id).getContext('2d');
-            
-            new Chart(ctx, {
-                type: chartData.chart_type, // 'bar', 'pie', etc.
+            const canvas = document.createElement("canvas");
+            canvas.id = "chart-" + Date.now();
+            canvas.style.maxHeight = "300px";
+            div.appendChild(canvas);
+            chatBox.appendChild(div);
+            chatBox.scrollTop = chatBox.scrollHeight;
+
+            new Chart(document.getElementById(canvas.id), {
+                type: chartData.chart_type,
                 data: {
                     labels: chartData.data.labels,
                     datasets: [{
                         label: chartData.title,
                         data: chartData.data.values,
-                        backgroundColor: [
-                            'rgba(102, 126, 234, 0.7)', 
-                            'rgba(118, 75, 162, 0.7)', 
-                            'rgba(240, 147, 251, 0.7)',
-                            'rgba(245, 87, 108, 0.7)',
-                            'rgba(79, 172, 254, 0.7)'
-                        ],
-                        borderColor: 'rgba(102, 126, 234, 1)',
+                        backgroundColor: '#667eea',
+                        borderColor: '#5a67d8',
                         borderWidth: 1
                     }]
                 },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: { beginAtZero: true }
-                    }
-                }
+                options: { responsive: true, maintainAspectRatio: false }
             });
         }
-        
-        function addMessage(text, className) {
-            const chatBox = document.getElementById("chatBox");
-            const msgDiv = document.createElement("div");
-            msgDiv.className = "message " + className;
-            msgDiv.textContent = text;
-            msgDiv.id = "msg-" + Date.now();
-            chatBox.appendChild(msgDiv);
-            chatBox.scrollTop = chatBox.scrollHeight;
-            return msgDiv.id;
+
+        function addMessage(text, cls) {
+            const div = document.createElement("div");
+            div.className = "message " + cls;
+            div.innerHTML = text.replace(/\n/g, "<br>"); // Allow line breaks
+            div.id = "msg-" + Date.now();
+            document.getElementById("chatBox").appendChild(div);
+            document.getElementById("chatBox").scrollTop = document.getElementById("chatBox").scrollHeight;
+            return div.id;
         }
     </script>
 </body>
