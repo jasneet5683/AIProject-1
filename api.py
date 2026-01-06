@@ -109,7 +109,7 @@ def get_status():
 
 @app.post("/api/chat")
 def chat(request: PromptRequest):
-    """Chat with document context and support Graph Data extraction"""
+    """Chat with document context and support Graph AND Table extraction"""
     global vector_store
     
     try:
@@ -120,32 +120,39 @@ def chat(request: PromptRequest):
             }
         
         # 1. Search similar documents
-        # We increase k=15 to get enough data points for a small chart
         docs = vector_store.similarity_search(request.prompt, k=15)
         context = "\n\n---\n".join([doc.page_content for doc in docs])
         
-        # 2. System Instruction for JSON output
+        # 2. UPDATED System Instruction
         system_instruction = """
         You are a Project Management AI Assistant. Use the provided Excel context to answer.
         
-        IMPORTANT INSTRUCTIONS FOR OUTPUT FORMAT:
+        OUTPUT FORMAT INSTRUCTIONS:
         
-        1. **Text Answer**: If the user asks a general question (e.g., "Who is doing X?", "What is the date for Y?"), reply with a normal text explanation.
+        1. **Text Answer**: For general questions, reply with normal text.
         
-        2. **Chart Request**: If the user asks for a GRAPH, CHART, VISUALIZATION, or STATISTICS, you must return a **single JSON object** strictly in this format:
+        2. **Table Request**: If the user asks for a LIST, TABLE, COMPARISON, or GRID, return a JSON object:
+           {
+             "is_table": true,
+             "title": "Table Title",
+             "columns": ["Column A", "Column B", "Column C"],
+             "rows": [
+               ["Row1 ColA", "Row1 ColB", "Row1 ColC"],
+               ["Row2 ColA", "Row2 ColB", "Row2 ColC"]
+             ],
+             "summary": "Brief summary of the table."
+           }
+        
+        3. **Chart Request**: If the user asks for a GRAPH/CHART, return a JSON object:
            {
              "is_chart": true,
-             "chart_type": "bar", 
+             "chart_type": "bar",
              "title": "Chart Title",
-             "data": {
-               "labels": ["Label A", "Label B"],
-               "values": [10, 25]
-             },
-             "summary": "A short sentence explaining the data."
+             "data": { "labels": ["A", "B"], "values": [10, 20] },
+             "summary": "Brief summary."
            }
-           - Supported chart_types: "bar", "pie", "line".
-           - "values" must be numbers.
-           - Do not include markdown formatting (like ```json). Just the raw JSON string.
+
+        IMPORTANT: Do not wrap JSON in Markdown (no ```json). Return raw JSON string only.
         """
 
         full_prompt = (
@@ -160,28 +167,33 @@ def chat(request: PromptRequest):
         content = response.content.strip()
         
         # 3. Clean and Parse Response
-        # Sometimes AI wraps JSON in ```json ... ``` blocks. We clean that up.
-        cleaned_content = content
-        if cleaned_content.startswith("```"):
-            cleaned_content = cleaned_content.replace("```json", "").replace("```", "").strip()
+        cleaned_content = content.replace("```json", "").replace("```", "").strip()
 
         try:
-            # Try to parse the content as JSON
             data_obj = json.loads(cleaned_content)
             
-            # Check if it follows our chart schema
-            if isinstance(data_obj, dict) and data_obj.get("is_chart") is True:
+            # CHECK FOR CHART
+            if data_obj.get("is_chart") is True:
                 return {
                     "response": data_obj["summary"],
                     "chart_data": data_obj,
                     "type": "chart",
                     "status": "success"
                 }
+            
+            # CHECK FOR TABLE (New!)
+            if data_obj.get("is_table") is True:
+                 return {
+                    "response": data_obj["summary"],
+                    "table_data": data_obj,
+                    "type": "table",
+                    "status": "success"
+                }
+
         except json.JSONDecodeError:
-            # If it's not JSON, it's just a normal conversation
             pass
 
-        # Return standard text response
+        # Return standard text
         return {
             "response": content,
             "type": "text",
@@ -195,3 +207,4 @@ if __name__ == "__main__":
     import uvicorn
     # 0.0.0.0 is required for Render
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
