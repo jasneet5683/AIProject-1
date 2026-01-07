@@ -126,7 +126,7 @@ def chat(request: PromptRequest):
         """
 
         # Call OpenAI
-        llm = ChatOpenAI(api_key=api_key, model="gpt-3.5-turbo", temperature=0)
+        llm = ChatOpenAI(api_key=api_key, model="gpt-4o-mini", temperature=0)
         
         # Combine instructions + user question
         full_prompt = f"{system_instruction}\n\nUser Question: {request.prompt}"
@@ -172,3 +172,4 @@ def chat(request: PromptRequest):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
