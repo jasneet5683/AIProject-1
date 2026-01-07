@@ -4,7 +4,8 @@ import pandas as pd
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from langchain_openai import ChatOpenAI
+# NEW IMPORT FOR GOOGLE
+from langchain_google_genai import ChatGoogleGenerativeAI
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -21,7 +22,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-api_key = os.getenv("OPENAI_API_KEY")
+#  GET GOOGLE KEY
+api_key = os.getenv("GOOGLE_API_KEY")
 
 # Global variables
 excel_text_context = ""
@@ -32,8 +34,9 @@ class PromptRequest(BaseModel):
 
 def load_excel_global():
     """
-    Loads the entire Excel file into a text string.
-    This ensures the AI sees ALL data, not just bits and pieces.
+    Loads Excel and converts to CSV string.
+    Gemini has a huge context window, so we don't need to be as aggressive
+    with cutting data, but cleaning it is still good practice.
     """
     global excel_text_context, document_loaded
     
@@ -48,19 +51,25 @@ def load_excel_global():
         print(f"✅ Reading Excel file: {excel_path}...")
         
         # Read Excel
-        df = pd.read_excel(excel_path).fillna("N/A")
+        df = pd.read_excel(excel_path)
         
-        # Convert Dates to string to prevent format errors
+        # Basic cleanup
+        df.dropna(how='all', inplace=True) # Drop empty rows
+        df = df.fillna("N/A") # Fill blanks
+        
+        # Normalize Dates
         for col in df.columns:
-            if "date" in col.lower() or "time" in col.lower():
-                df[col] = df[col].astype(str)
+            if "date" in col.lower():
+                try:
+                    df[col] = pd.to_datetime(df[col]).dt.strftime('%Y-%m-%d')
+                except:
+                    df[col] = df[col].astype(str)
 
-        # Convert the ENTIRE dataframe to a CSV-style string
-        # This gives the AI a perfect view of the data structure
+        # Convert to String
         excel_text_context = df.to_csv(index=False)
         
         document_loaded = True
-        print(f"✅ Data Loaded! ({len(df)} rows)")
+        print(f"✅ Data Loaded! ({len(df)} rows). Using Google Gemini.")
         
     except Exception as e:
         print(f"❌ Error loading Excel: {str(e)}")
@@ -69,10 +78,6 @@ def load_excel_global():
 @app.on_event("startup")
 async def startup_event():
     load_excel_global()
-
-@app.get("/")
-def read_root():
-    return {"status": "running"}
 
 @app.get("/api/status")
 def get_status():
@@ -87,57 +92,59 @@ def chat(request: PromptRequest):
             return {"response": "Excel file not loaded.", "status": "error"}
 
         # SYSTEM INSTRUCTION
-        # We pass the 'excel_text_context' directly into the prompt.
         system_instruction = f"""
-        You are an expert Project Management AI. 
-        Below is the COMPLETE DATA from the Project Plan Excel file:
+        You are a Data Analyst AI. 
+        Below is the raw CSV data from a Project Plan:
         
-        --- START OF DATA ---
+        --- DATA START ---
         {excel_text_context}
-        --- END OF DATA ---
+        --- DATA END ---
 
         INSTRUCTIONS:
-        1. Answer based ONLY on the data above. Be accurate.
-        2. If asked for a specific value (date, duration), look it up exactly.
+        1. Analyze the data above to answer the user's question.
+        2. Be precise with numbers, dates, and names.
         
-        OUTPUT FORMATS:
+        OUTPUT FORMATS (Strict JSON):
         
-        A) If user asks for a TABLE/LIST:
-           Return ONLY this raw JSON (no markdown):
+        A) FOR TABLES/LISTS:
            {{
              "is_table": true,
-             "title": "Title Here",
-             "columns": ["Col 1", "Col 2"],
+             "title": "Table Title",
+             "columns": ["Col A", "Col B"],
              "rows": [ ["Val 1", "Val 2"], ["Val 3", "Val 4"] ],
-             "summary": "Short summary."
+             "summary": "Brief summary."
            }}
 
-        B) If user asks for a CHART/GRAPH:
-           Return ONLY this raw JSON (no markdown):
+        B) FOR CHARTS/GRAPHS:
            {{
              "is_chart": true,
-             "chart_type": "bar",
+             "chart_type": "bar", 
              "title": "Chart Title",
-             "data": {{ "labels": ["A", "B"], "values": [10, 20] }},
-             "summary": "Short summary."
+             "data": {{ "labels": ["Label1", "Label2"], "values": [10, 20] }},
+             "summary": "Brief summary."
            }}
            
-        C) Otherwise, return plain text.
+        C) FOR TEXT:
+           Return plain text.
         """
 
-        # Call OpenAI
-        llm = ChatOpenAI(api_key=api_key, model="gpt-4o-mini", temperature=0)
+        #  INITIALIZE GOOGLE GEMINI
+        # gemini-1.5-flash is fast, cheap, and has 1M token context
+        llm = ChatGoogleGenerativeAI(
+            model="gemini-1.5-flash",
+            google_api_key=api_key,
+            temperature=0  # 0 means be factual, not creative
+        )
         
-        # Combine instructions + user question
         full_prompt = f"{system_instruction}\n\nUser Question: {request.prompt}"
         
+        # Invoke Gemini
         response = llm.invoke(full_prompt)
         content = response.content.strip()
         
-        # Clean potential Markdown formatting
+        # Clean Markdown (Gemini often adds ```json ... ```)
         clean_content = content.replace("```json", "").replace("```", "").strip()
 
-        # Try to parse JSON for Tables/Charts
         try:
             data_obj = json.loads(clean_content)
             
@@ -157,11 +164,10 @@ def chat(request: PromptRequest):
                     "status": "success"
                 }
         except:
-            # Not JSON, just normal text
             pass
 
         return {
-            "response": content,
+            "response": clean_content,
             "type": "text",
             "status": "success"
         }
@@ -172,4 +178,3 @@ def chat(request: PromptRequest):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
