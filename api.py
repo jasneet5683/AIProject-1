@@ -79,6 +79,14 @@ def load_excel_global():
 async def startup_event():
     load_excel_global()
 
+@app.get("/")
+def read_root():
+    return {
+        "status": "active",
+        "message": "Welcome! The backend is running. Use /api/chat to interact."
+    }
+
+
 @app.get("/api/status")
 def get_status():
     return {"document_loaded": document_loaded}
@@ -131,7 +139,7 @@ def chat(request: PromptRequest):
         #  INITIALIZE GOOGLE GEMINI
         # gemini-1.5-flash is fast, cheap, and has 1M token context
         llm = ChatGoogleGenerativeAI(
-            model="gemini-pro",  
+            model="gemini-1.5-flash",  
             google_api_key=api_key,
             temperature=0  # 0 means be factual, not creative
         )
@@ -178,4 +186,5 @@ def chat(request: PromptRequest):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
 
