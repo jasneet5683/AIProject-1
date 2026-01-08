@@ -6,7 +6,8 @@ langchain-community
 PyPDF2==3.0.1
 faiss-cpu==1.13.1
 python-dotenv==1.0.1
+langchain-google-genai>=1.0.3
+google-generativeai>=0.5.2
 pandas 
 openpyxl
-langchain_google_genai
 dotenv
