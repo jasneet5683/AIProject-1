@@ -138,8 +138,8 @@ def chat(request: PromptRequest):
 
         #  INITIALIZE GOOGLE GEMINI
         # gemini-1.5-flash is fast, cheap, and has 1M token context
-        llm = ChatGoogleGenAI(
-            model="gemini-1.5-flash",  
+        llm = ChatGoogleGenrativeAI(
+            model="gemini-1.5-flash-latest",  
             google_api_key=api_key,
             temperature=0  # 0 means be factual, not creative
         )
@@ -186,7 +186,3 @@ def chat(request: PromptRequest):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
-
-
-
