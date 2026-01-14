@@ -26,11 +26,11 @@
             border-radius: 10px;
             box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
             width: 100%;
-            max-width: 700px; /* Made slightly wider for tables */
+            max-width: 700px;
             padding: 30px;
             display: flex;
             flex-direction: column;
-            height: 90vh; /* Fixed height for better scrolling */
+            height: 90vh;
         }
         
         h1 { text-align: center; color: #333; margin-bottom: 10px; font-size: 24px; }
@@ -41,7 +41,7 @@
         .status-bar.error { background: #f8d7da; color: #721c24; }
         
         .chat-box {
-            flex: 1; /* Fills remaining space */
+            flex: 1;
             border: 1px solid #ddd;
             border-radius: 8px;
             padding: 15px;
@@ -57,39 +57,56 @@
         /* --- 📊 CHART STYLES --- */
         .chart-container { background: white; border: 1px solid #ddd; border-radius: 8px; padding: 10px; margin-top: 10px; }
         
-        /* --- ▦ TABLE STYLES (NEW) --- */
+        /* --- ▦ TABLE STYLES --- */
         .table-container {
-            overflow-x: auto; /* Scroll horizontally if table is wide */
+            overflow-x: auto;
             margin-top: 10px;
             background: white;
             border-radius: 8px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.05);
         }
-        .chat-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 13px;
-        }
-        .chat-table th {
-            background-color: #667eea;
-            color: white;
-            text-align: left;
-            padding: 10px;
-        }
-        .chat-table td {
-            border-bottom: 1px solid #eee;
-            padding: 8px 10px;
-            color: #333;
-        }
+        .chat-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .chat-table th { background-color: #667eea; color: white; text-align: left; padding: 10px; }
+        .chat-table td { border-bottom: 1px solid #eee; padding: 8px 10px; color: #333; }
         .chat-table tr:last-child td { border-bottom: none; }
         .chat-table tr:nth-child(even) { background-color: #f8f9fa; }
         
         /* --- INPUT STYLES --- */
         .input-group { display: flex; gap: 10px; }
         input[type="text"] { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 8px; outline: none; }
-        button { padding: 12px 25px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
-        button:hover { background: #764ba2; }
-        button:disabled { background: #ccc; }
+        
+        /* Updated Buttons */
+        button { padding: 12px 20px; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; }
+        button:disabled { background: #ccc !important; cursor: not-allowed; }
+        
+        #sendBtn { background: #667eea; }
+        #sendBtn:hover { background: #764ba2; }
+
+        /* New Add Task Button Style */
+        #addTaskBtn { background: #28a745; display: flex; align-items: center; gap: 5px; }
+        #addTaskBtn:hover { background: #218838; }
+
+        /* --- MODAL (POPUP) STYLES --- */
+        .modal-overlay {
+            display: none; /* Hidden by default */
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center; justify-content: center;
+        }
+        .modal-content {
+            background: white; padding: 25px; border-radius: 12px;
+            width: 90%; max-width: 400px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            animation: fadeIn 0.3s;
+        }
+        .modal-input {
+            width: 100%; padding: 10px; margin-bottom: 12px;
+            border: 1px solid #ddd; border-radius: 6px; font-size: 14px;
+        }
+        .modal-buttons { display: flex; gap: 10px; margin-top: 10px; }
+        
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
@@ -102,18 +119,44 @@
             <div class="message ai-message">
                 Hello! You can ask me to:<br>
                 1. Answer questions 📝<br>
-                2. Create Charts 📊 (e.g., "Graph duration by task")<br>
-                3. Create Tables ▦ (e.g., "List all tasks and start dates")
+                2. Create Charts 📊<br>
+                3. <b>Add new tasks</b> using the green button below! ➕
             </div>
         </div>
         
         <div class="input-group">
             <input type="text" id="userInput" placeholder="Type here..." disabled onkeypress="if(event.key === 'Enter') sendMessage()">
+            
             <button id="sendBtn" onclick="sendMessage()" disabled>Send</button>
+            
+            <!-- NEW: Add Task Button -->
+            <button id="addTaskBtn" onclick="openModal()" disabled>➕ Add Task</button>
+        </div>
+    </div>
+
+    <!-- NEW: Modal for adding tasks -->
+    <div id="taskModal" class="modal-overlay">
+        <div class="modal-content">
+            <h3 style="margin-bottom:15px; color:#333;">📝 Add New Task</h3>
+            
+            <label style="font-size:12px; font-weight:bold; color:#666;">Task Name</label>
+            <input type="text" id="newTaskName" class="modal-input" placeholder="e.g. Finish Python Script">
+            
+            <label style="font-size:12px; font-weight:bold; color:#666;">Due Date</label>
+            <input type="date" id="newTaskDate" class="modal-input">
+            
+            <label style="font-size:12px; font-weight:bold; color:#666;">Description (Optional)</label>
+            <textarea id="newTaskDesc" class="modal-input" placeholder="Details..." style="height:80px; resize:none; font-family:inherit;"></textarea>
+            
+            <div class="modal-buttons">
+                <button onclick="submitTask()" style="flex:1; background:#28a745;">Save Task</button>
+                <button onclick="closeModal()" style="flex:1; background:#dc3545;">Cancel</button>
+            </div>
         </div>
     </div>
 
     <script>
+        // Update this to your actual Render URL
         const API_URL = "https://aiproject-1-ipxt.onrender.com";
 
         window.addEventListener("load", checkStatus);
@@ -135,9 +178,11 @@
                 });
         }
 
+        // Updated to handle both buttons
         function toggleInput(enable) {
             document.getElementById("userInput").disabled = !enable;
             document.getElementById("sendBtn").disabled = !enable;
+            document.getElementById("addTaskBtn").disabled = !enable;
         }
 
         function sendMessage() {
@@ -159,18 +204,9 @@
             .then(r => r.json())
             .then(data => {
                 document.getElementById(loadId).remove();
-                
-                // 1. Show the Summary Text
                 addMessage(data.response, "ai-message");
-
-                // 2. Check for Table
-                if(data.type === "table") {
-                    renderTable(data.table_data);
-                }
-                // 3. Check for Chart
-                else if(data.type === "chart") {
-                    renderChart(data.chart_data);
-                }
+                if(data.type === "table") renderTable(data.table_data);
+                else if(data.type === "chart") renderChart(data.chart_data);
             })
             .catch(e => {
                 document.getElementById(loadId).innerText = "Error: " + e;
@@ -181,42 +217,77 @@
             });
         }
 
-        // --- ▦ RENDER TABLE FUNCTION ---
+        // --- NEW MODAL FUNCTIONS ---
+        function openModal() {
+            document.getElementById("taskModal").style.display = "flex";
+        }
+
+        function closeModal() {
+            document.getElementById("taskModal").style.display = "none";
+        }
+
+        function submitTask() {
+            const name = document.getElementById("newTaskName").value;
+            const date = document.getElementById("newTaskDate").value;
+            const desc = document.getElementById("newTaskDesc").value;
+
+            if (!name || !date) {
+                alert("Please enter both Task Name and Date.");
+                return;
+            }
+
+            closeModal();
+            addMessage(`🛠 Adding task: "${name}"...`, "user-message");
+
+            // Assuming your backend has this endpoint
+            fetch(`${API_URL}/api/add-task`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ 
+                    name: name, 
+                    date: date, 
+                    description: desc 
+                })
+            })
+            .then(r => r.json())
+            .then(data => {
+                // Clear inputs
+                document.getElementById("newTaskName").value = "";
+                document.getElementById("newTaskDate").value = "";
+                document.getElementById("newTaskDesc").value = "";
+                
+                // Show success message
+                addMessage("✅ " + (data.message || "Task added successfully!"), "ai-message");
+            })
+            .catch(e => {
+                addMessage("❌ Error adding task. Check backend logs.", "ai-message");
+                console.error(e);
+            });
+        }
+
+        // --- EXISTING RENDER FUNCTIONS ---
         function renderTable(tableData) {
             const chatBox = document.getElementById("chatBox");
             const container = document.createElement("div");
             container.className = "table-container";
-
             let html = `<table class="chat-table"><thead><tr>`;
-            
-            // Add Headers
-            tableData.columns.forEach(col => {
-                html += `<th>${col}</th>`;
-            });
+            tableData.columns.forEach(col => { html += `<th>${col}</th>`; });
             html += `</tr></thead><tbody>`;
-
-            // Add Rows
             tableData.rows.forEach(row => {
                 html += `<tr>`;
-                row.forEach(cell => {
-                    html += `<td>${cell}</td>`;
-                });
+                row.forEach(cell => { html += `<td>${cell}</td>`; });
                 html += `</tr>`;
             });
-
             html += `</tbody></table>`;
             container.innerHTML = html;
-            
             chatBox.appendChild(container);
             chatBox.scrollTop = chatBox.scrollHeight;
         }
 
-        // --- 📊 RENDER CHART FUNCTION ---
         function renderChart(chartData) {
             const chatBox = document.getElementById("chatBox");
             const div = document.createElement("div");
             div.className = "chart-container";
-            
             const canvas = document.createElement("canvas");
             canvas.id = "chart-" + Date.now();
             canvas.style.maxHeight = "300px";
@@ -243,7 +314,7 @@
         function addMessage(text, cls) {
             const div = document.createElement("div");
             div.className = "message " + cls;
-            div.innerHTML = text.replace(/\n/g, "<br>"); // Allow line breaks
+            div.innerHTML = text.replace(/\n/g, "<br>");
             div.id = "msg-" + Date.now();
             document.getElementById("chatBox").appendChild(div);
             document.getElementById("chatBox").scrollTop = document.getElementById("chatBox").scrollHeight;
