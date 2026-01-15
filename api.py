@@ -1,20 +1,15 @@
 import json
 import os
 import pandas as pd
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-# NEW IMPORTS FOR GOOGLE SHEETS
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-
-# LANGCHAIN / GEMINI
 from langchain_google_genai import ChatGoogleGenerativeAI
 from dotenv import load_dotenv
-
-#for message update
 from langchain_core.tools import tool
-from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 
 # Load environment variables
 load_dotenv()
@@ -30,13 +25,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# GET GOOGLE API KEY (For Gemini)
+# GET GOOGLE API KEY
 api_key = os.getenv("GOOGLE_API_KEY")
 
 # Global variables
 excel_text_context = ""
 document_loaded = False
-SHEET_NAME = "Task_Manager" # <--- MAKE SURE YOUR GOOGLE SHEET HAS THIS NAME
+SHEET_NAME = "Task_Manager"  # Ensure this matches your Sheet Name
 
 # --- DATA MODELS ---
 
@@ -57,23 +52,16 @@ class UpdateTaskRequest(BaseModel):
 
 # --- HELPER: CONNECT TO GOOGLE SHEETS ---
 def get_google_sheet():
-    """Authenticates and returns the Sheet object."""
     try:
-        # Load JSON from Render Environment Variable
         json_creds = os.getenv("GOOGLE_CREDS")
         if not json_creds:
-            print("❌ Error: GOOGLE_CREDS not found in environment variables.")
+            print("❌ Error: GOOGLE_CREDS not found.")
             return None
-
         creds_dict = json.loads(json_creds)
-        
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         client = gspread.authorize(creds)
-        
-        # Open the specific sheet
-        sheet = client.open(SHEET_NAME).sheet1
-        return sheet
+        return client.open(SHEET_NAME).sheet1
     except Exception as e:
         print(f"❌ Connection Error: {e}")
         return None
@@ -81,37 +69,22 @@ def get_google_sheet():
 # --- CORE FUNCTIONS ---
 
 def load_data_global():
-    """
-    Downloads data from Google Sheets instead of local Excel.
-    Refreshes the AI's memory.
-    """
     global excel_text_context, document_loaded
-    
     sheet = get_google_sheet()
     if not sheet:
         document_loaded = False
         return
 
     try:
-        print(f"✅ Fetching data from Google Sheet: {SHEET_NAME}...")
-        
-        # Get all records as a list of dictionaries
         data = sheet.get_all_records()
-        
         if not data:
-            print("⚠️ Sheet is empty.")
             excel_text_context = ""
             document_loaded = True
             return
 
-        # Convert to Pandas DataFrame
         df = pd.DataFrame(data)
-        
-        # Clean Empty Rows
-        df.dropna(how='all', inplace=True)
-        df = df.fillna("N/A")
-        
-        # Normalize Dates (Convert to string)
+        df.fillna("N/A", inplace=True)
+        # Normalize dates
         for col in df.columns:
             if "date" in col.lower():
                 try:
@@ -119,11 +92,9 @@ def load_data_global():
                 except:
                     df[col] = df[col].astype(str)
 
-        # Convert to CSV String for AI Context
         excel_text_context = df.to_csv(index=False)
-        
         document_loaded = True
-        print(f"✅ Data Loaded! ({len(df)} rows).")
+        print("✅ Data Loaded/Refreshed.")
         
     except Exception as e:
         print(f"❌ Error processing data: {str(e)}")
@@ -137,105 +108,81 @@ async def startup_event():
 
 @app.get("/")
 def read_root():
-    return {
-        "status": "active",
-        "message": "Backend is running with Google Sheets integration! ☁️"
-    }
+    return {"status": "active", "message": "Backend is running!"}
 
 @app.get("/api/status")
 def get_status():
     return {"document_loaded": document_loaded}
 
-# 1. ADD TASK ENDPOINT (Google Sheets)
+# 1. ADD TASK (Working)
 @app.post("/api/add-task")
 def add_task(request: AddTaskRequest):
     sheet = get_google_sheet()
     if not sheet:
-        return {"message": "Could not connect to Google Sheets", "status": "error"}
-
+        return {"message": "Connection Error", "status": "error"}
     try:
-        # Prepare the row. ORDER MATTERS! 
-        # Ensure your Google Sheet columns are: 
-        # [Task Name, Start Date, End Date, Status, Assigned To]
-        row_data = [
-            request.task_name,
-            request.start_date,
-            request.end_date,
-            request.status,
-            request.assigned_to
-        ]
-
-        # Append to the bottom of the sheet
-        sheet.append_row(row_data)
-
-        # Refresh AI Memory immediately so it knows about the new task
+        row = [request.task_name, request.start_date, request.end_date, request.status, request.assigned_to]
+        sheet.append_row(row)
         load_data_global()
-
-        return {"message": "Task saved to Google Sheets!", "status": "success"}
-
+        return {"message": "Task saved successfully!", "status": "success"}
     except Exception as e:
-        return {"message": f"Error adding task: {str(e)}", "status": "error"}
+        return {"message": f"Error: {str(e)}", "status": "error"}
 
-# 2. UPDATE TASK ENDPOINT (Google Sheets)
+# 2. UPDATE TASK (Logic used by Tool)
 @app.post("/api/update-task")
-def update_task(request: UpdateTaskRequest):
-    # This is a bit trickier with Sheets.
-    # Strategy: Download all -> Update in Pandas -> Clear Sheet -> Upload New Data
-    # (This is safest for avoiding row index errors)
-    
+def update_task_endpoint(request: UpdateTaskRequest):
+    # Wrapper to call the internal update logic
+    result = internal_update_task(request.task_name, request.field_to_update, request.new_value)
+    return result
+
+def internal_update_task(task_name, field, value):
+    """Updates the sheet and returns a status dict."""
     sheet = get_google_sheet()
     if not sheet:
-        return {"message": "Could not connect to Google Sheets", "status": "error"}
+        return {"message": "Connection Error", "status": "error"}
 
     try:
-        # 1. Get Data
         data = sheet.get_all_records()
         df = pd.DataFrame(data)
 
-        # 2. Find the task
-        mask = df["Task Name"] == request.task_name
+        # Find task (Case insensitive search)
+        mask = df["Task Name"].astype(str).str.lower() == task_name.lower()
         if not mask.any():
-            return {"message": f"Task '{request.task_name}' not found.", "status": "error"}
+            return {"message": f"Task '{task_name}' not found.", "status": "error"}
 
-        # 3. Handle Column Matching
+        # Find column
         col_map = {c.strip().lower(): c for c in df.columns}
-        target_col = col_map.get(request.field_to_update.strip().lower())
-
+        target_col = col_map.get(field.strip().lower())
         if not target_col:
-            return {"message": f"Column '{request.field_to_update}' not found.", "status": "error"}
+            return {"message": f"Column '{field}' not found.", "status": "error"}
 
-        # 4. Update the value in DataFrame
-        df.loc[mask, target_col] = request.new_value
-
-        # 5. Save back to Google Sheets
-        # clear() removes all data, update([data]) puts new data back
+        # Update
+        df.loc[mask, target_col] = value
+        
+        # Save to Sheet
         sheet.clear()
-        # Put headers back
         sheet.update([df.columns.values.tolist()] + df.values.tolist())
-
-        # 6. Refresh AI Memory
-        load_data_global()
-
-        return {"message": f"Updated '{target_col}' in Google Sheets", "status": "success"}
+        
+        load_data_global() # Refresh Memory
+        return {"message": f"Updated '{task_name}' - set {target_col} to '{value}'", "status": "success"}
 
     except Exception as e:
-        return {"message": f"Error updating task: {str(e)}", "status": "error"}
+        return {"message": f"Error updating: {str(e)}", "status": "error"}
 
-# --- SMART CHAT ENDPOINT WITH TOOLS ---
+
+# --- 3. SMART CHAT AGENT ---
 
 @tool
 def update_sheet_tool(task_name: str, field: str, value: str):
     """
     Updates a task in the Google Sheet.
     Args:
-        task_name: The exact name of the task.
-        field: The column to update (Status, Assigned To, Start Date, End Date).
-        value: The new value to set.
+        task_name: The exact name of the task (e.g., 'Design Homepage').
+        field: The column name to update (Status, Assigned To, Start Date, End Date).
+        value: The new value to set (e.g., 'Completed', 'John Doe').
     """
-    # Reuse the logic from our update_task endpoint!
-    # We create a fake request object to reuse the logic
-    req = UpdateTaskRequest(task_name=task_name, field_to_update=field, new_value=value)
-    result = update_task(req) # Call the existing python function
+    print(f"🛠 Tool Triggered: Updating {task_name} | {field} -> {value}")
+    result = internal_update_task(task_name, field, value)
     return result["message"]
 
 @app.post("/api/chat")
@@ -243,32 +190,33 @@ def chat(request: PromptRequest):
     global excel_text_context
     
     try:
+        # Reload if memory is empty
         if not document_loaded:
             load_data_global()
 
-        # 1. Define the Tools the AI can use
+        # 1. Define Tools
         tools = [update_sheet_tool]
         
-        # 2. Bind tools to the LLM
+        # 2. Initialize LLM (Using a standard supported model)
+        # Trying gemini-2.0-flash-exp (Fast & Smart) or gemini-1.5-flash
         llm = ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash",
+            model="gemini-2.0-flash-exp", 
             google_api_key=api_key,
             temperature=0
         )
         llm_with_tools = llm.bind_tools(tools)
 
-        # 3. Create the Conversation Context
+        # 3. System Prompt
         system_msg = f"""
-        You are a Project Manager AI. 
-        You have access to a tool called 'update_sheet_tool' to modify the Google Sheet.
+        You are a Project Manager Assistant.
         
         CURRENT DATA:
         {excel_text_context}
         
         INSTRUCTIONS:
-        - If the user asks to UPDATE, CHANGE, or MARK a task, USE THE TOOL.
-        - If the user asks a question, just answer from the data.
-        - Don't make up confirmation messages unless the tool runs successfully.
+        - If the user asks to UPDATE, CHANGE, or MODIFY a task, YOU MUST USE the 'update_sheet_tool'.
+        - If the user asks a question, answer from the data.
+        - Do not halluncinate updates. Only say "Done" if the tool runs.
         """
 
         messages = [
@@ -276,30 +224,27 @@ def chat(request: PromptRequest):
             HumanMessage(content=request.prompt)
         ]
 
-        # 4. Invoke the AI
+        # 4. Invoke LLM
+        print("🤖 AI Thinking...")
         ai_response = llm_with_tools.invoke(messages)
 
-        # 5. Check if the AI wants to use a Tool
+        # 5. Handle Tool Call (The Agent part)
         if ai_response.tool_calls:
-            print("🤖 AI wants to use a tool:", ai_response.tool_calls)
+            print("🔧 AI decided to use a tool:", ai_response.tool_calls)
             
+            # Execute the tool
             for tool_call in ai_response.tool_calls:
-                # Extract arguments provided by AI
-                args = tool_call["args"]
+                selected_tool = {"update_sheet_tool": update_sheet_tool}[tool_call["name"].lower()]
+                tool_output = selected_tool.invoke(tool_call["args"])
                 
-                # Execute the actual Python function
-                tool_result = update_sheet_tool.invoke(args)
-                
-                # Update Memory
-                load_data_global()
-                
+                # Return result to frontend immediately
                 return {
-                    "response": f"✅ Action Taken: {tool_result}",
+                    "response": f"✅ {tool_output}",
                     "type": "text",
                     "status": "success"
                 }
 
-        # 6. If no tool needed, just return the text response
+        # 6. Regular Text Response
         return {
             "response": ai_response.content,
             "type": "text",
@@ -307,70 +252,14 @@ def chat(request: PromptRequest):
         }
 
     except Exception as e:
+        print(f"❌ Chat Error: {e}")
         return {"response": f"Error: {str(e)}", "status": "error"}
-        
-# 3. CHAT ENDPOINT (Unchanged logic, uses new global context)
-# @app.post("/api/chat")
-# def chat(request: PromptRequest):
-#    global excel_text_context
-    
- #   try:
- #       if not document_loaded:
-  #          # Try reloading one more time if missing
-  #          load_data_global()
-  #          if not document_loaded:
-  #              return {"response": "System is offline or Google Sheet not connected.", "status": "error"}
 
-   #     # SYSTEM INSTRUCTION
-    #    system_instruction = f"""
-    #    You are a Data Analyst AI. 
-    #    Below is the Project Data from Google Sheets:
-        
-     #   --- DATA START ---
-     #   {excel_text_context}
-     #   --- DATA END ---
-
-     #   INSTRUCTIONS:
-     #   1. Analyze the data above to answer the user's question.
-     #   2. Be precise with numbers, dates, and names.
-        
-      #  OUTPUT FORMATS (Strict JSON):
-     #   A) FOR TABLES/LISTS: {{ "is_table": true, "title": "...", "columns": [...], "rows": [...], "summary": "..." }}
-     #   B) FOR CHARTS: {{ "is_chart": true, "chart_type": "bar", "title": "...", "data": {{ "labels": [...], "values": [...] }}, "summary": "..." }}
-     #   C) FOR TEXT: Return plain text.
-     #   """
-
-     #   llm = ChatGoogleGenerativeAI(
-     #       model="gemini-2.5-flash",  
-     #       google_api_key=api_key,
-     #       temperature=0
-     #   )
-        
-      #  full_prompt = f"{system_instruction}\n\nUser Question: {request.prompt}"
-        
-      #  response = llm.invoke(full_prompt)
-      #  content = response.content.strip()
-        
-      #  # Clean Markdown
-      #  clean_content = content.replace("```json", "").replace("```", "").strip()
-
-      #  try:
-      #      data_obj = json.loads(clean_content)
-      #      if data_obj.get("is_chart") is True:
-      #          return {"response": data_obj["summary"], "chart_data": data_obj, "type": "chart", "status": "success"}
-      #      if data_obj.get("is_table") is True:
-      #           return {"response": data_obj["summary"], "table_data": data_obj, "type": "table", "status": "success"}
-      #  except:
-      #      pass
-
-      #  return {"response": clean_content, "type": "text", "status": "success"}
-
-   # except Exception as e:
-   #     return {"response": f"Internal Error: {str(e)}", "status": "error"}
 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
     
+
 
 
