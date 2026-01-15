@@ -6,8 +6,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from langchain_google_genai import ChatGoogleGenerativeAI
 from dotenv import load_dotenv
+
+# ✅ CHANGED: OpenAI Imports
+from langchain_openai import ChatOpenAI
 from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -25,8 +27,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# GET GOOGLE API KEY
-api_key = os.getenv("GOOGLE_API_KEY")
+# ✅ CHANGED: Get OpenAI API Key
+openai_key = os.getenv("OPENAI_API_KEY")
 
 # Global variables
 excel_text_context = ""
@@ -84,6 +86,7 @@ def load_data_global():
 
         df = pd.DataFrame(data)
         df.fillna("N/A", inplace=True)
+        
         # Normalize dates
         for col in df.columns:
             if "date" in col.lower():
@@ -108,13 +111,13 @@ async def startup_event():
 
 @app.get("/")
 def read_root():
-    return {"status": "active", "message": "Backend is running!"}
+    return {"status": "active", "message": "Backend is running with OpenAI! 🧠"}
 
 @app.get("/api/status")
 def get_status():
     return {"document_loaded": document_loaded}
 
-# 1. ADD TASK (Working)
+# 1. ADD TASK
 @app.post("/api/add-task")
 def add_task(request: AddTaskRequest):
     sheet = get_google_sheet()
@@ -128,10 +131,9 @@ def add_task(request: AddTaskRequest):
     except Exception as e:
         return {"message": f"Error: {str(e)}", "status": "error"}
 
-# 2. UPDATE TASK (Logic used by Tool)
+# 2. UPDATE TASK (Internal Logic)
 @app.post("/api/update-task")
 def update_task_endpoint(request: UpdateTaskRequest):
-    # Wrapper to call the internal update logic
     result = internal_update_task(request.task_name, request.field_to_update, request.new_value)
     return result
 
@@ -159,7 +161,7 @@ def internal_update_task(task_name, field, value):
         # Update
         df.loc[mask, target_col] = value
         
-        # Save to Sheet
+        # Save to Sheet (Clear & Rewrite is safest)
         sheet.clear()
         sheet.update([df.columns.values.tolist()] + df.values.tolist())
         
@@ -170,7 +172,7 @@ def internal_update_task(task_name, field, value):
         return {"message": f"Error updating: {str(e)}", "status": "error"}
 
 
-# --- 3. SMART CHAT AGENT ---
+# --- 3. SMART CHAT AGENT (OPENAI VERSION) ---
 
 @tool
 def update_sheet_tool(task_name: str, field: str, value: str):
@@ -197,11 +199,11 @@ def chat(request: PromptRequest):
         # 1. Define Tools
         tools = [update_sheet_tool]
         
-        # 2. Initialize LLM (Using a standard supported model)
-        # Trying gemini-2.5-flash (Fast & Smart) or gemini-1.5-flash
-        llm = ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash", 
-            google_api_key=api_key,
+        # 2. Initialize OpenAI LLM
+        # using 'gpt-4o' or 'gpt-3.5-turbo' (both support tools well)
+        llm = ChatOpenAI(
+            model="gpt-4o", 
+            openai_api_key=openai_key,
             temperature=0
         )
         llm_with_tools = llm.bind_tools(tools)
@@ -216,7 +218,7 @@ def chat(request: PromptRequest):
         INSTRUCTIONS:
         - If the user asks to UPDATE, CHANGE, or MODIFY a task, YOU MUST USE the 'update_sheet_tool'.
         - If the user asks a question, answer from the data.
-        - Do not halluncinate updates. Only say "Done" if the tool runs.
+        - Do NOT hallucinate. Only confirm update if the tool is called.
         """
 
         messages = [
@@ -225,19 +227,21 @@ def chat(request: PromptRequest):
         ]
 
         # 4. Invoke LLM
-        print("🤖 AI Thinking...")
+        print("🤖 AI Thinking (OpenAI)...")
         ai_response = llm_with_tools.invoke(messages)
 
-        # 5. Handle Tool Call (The Agent part)
+        # 5. Handle Tool Call
         if ai_response.tool_calls:
             print("🔧 AI decided to use a tool:", ai_response.tool_calls)
             
-            # Execute the tool
             for tool_call in ai_response.tool_calls:
+                # Map the tool name to the function
                 selected_tool = {"update_sheet_tool": update_sheet_tool}[tool_call["name"].lower()]
+                
+                # Run the tool
                 tool_output = selected_tool.invoke(tool_call["args"])
                 
-                # Return result to frontend immediately
+                # Return result immediately
                 return {
                     "response": f"✅ {tool_output}",
                     "type": "text",
@@ -255,12 +259,6 @@ def chat(request: PromptRequest):
         print(f"❌ Chat Error: {e}")
         return {"response": f"Error: {str(e)}", "status": "error"}
 
-
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-    
-
-
-
-
