@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jasneet AI Assistant</title>
+    <title>Jasneet AI Project Manager</title>
     
     <!-- Chart.js for Graphs -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -26,7 +26,7 @@
             border-radius: 10px;
             box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
             width: 100%;
-            max-width: 700px;
+            max-width: 800px; /* Made slightly wider for better table view */
             padding: 30px;
             display: flex;
             flex-direction: column;
@@ -54,109 +54,127 @@
         .user-message { background: #667eea; color: white; align-self: flex-end; margin-left: 50px; text-align: right; }
         .ai-message { background: #e0e0e0; color: #333; margin-right: 50px; }
         
-        /* --- 📊 CHART STYLES --- */
+        /* --- CHART & TABLE STYLES --- */
         .chart-container { background: white; border: 1px solid #ddd; border-radius: 8px; padding: 10px; margin-top: 10px; }
         
-        /* --- ▦ TABLE STYLES --- */
         .table-container {
-            overflow-x: auto;
-            margin-top: 10px;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            overflow-x: auto; margin-top: 10px; background: white;
+            border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05);
         }
         .chat-table { width: 100%; border-collapse: collapse; font-size: 13px; }
         .chat-table th { background-color: #667eea; color: white; text-align: left; padding: 10px; }
         .chat-table td { border-bottom: 1px solid #eee; padding: 8px 10px; color: #333; }
-        .chat-table tr:last-child td { border-bottom: none; }
         .chat-table tr:nth-child(even) { background-color: #f8f9fa; }
         
-        /* --- INPUT STYLES --- */
+        /* --- INPUTS & BUTTONS --- */
         .input-group { display: flex; gap: 10px; }
         input[type="text"] { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 8px; outline: none; }
         
-        /* Updated Buttons */
         button { padding: 12px 20px; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; }
         button:disabled { background: #ccc !important; cursor: not-allowed; }
         
         #sendBtn { background: #667eea; }
         #sendBtn:hover { background: #764ba2; }
 
-        /* New Add Task Button Style */
         #addTaskBtn { background: #28a745; display: flex; align-items: center; gap: 5px; }
         #addTaskBtn:hover { background: #218838; }
 
-        /* --- MODAL (POPUP) STYLES --- */
+        /* --- MODAL STYLES --- */
         .modal-overlay {
-            display: none; /* Hidden by default */
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.5);
-            z-index: 1000;
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5); z-index: 1000;
             align-items: center; justify-content: center;
         }
         .modal-content {
             background: white; padding: 25px; border-radius: 12px;
-            width: 90%; max-width: 400px;
+            width: 90%; max-width: 450px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.3);
             animation: fadeIn 0.3s;
         }
-        .modal-input {
-            width: 100%; padding: 10px; margin-bottom: 12px;
-            border: 1px solid #ddd; border-radius: 6px; font-size: 14px;
+        .form-group { margin-bottom: 12px; }
+        .form-label { display: block; font-size: 12px; font-weight: bold; color: #555; margin-bottom: 4px; }
+        .form-input { 
+            width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; 
         }
-        .modal-buttons { display: flex; gap: 10px; margin-top: 10px; }
+        .row { display: flex; gap: 10px; }
         
         @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>📚 Jasneet AI Project</h1>
+        <h1>📊 Project Dashboard</h1>
         
         <div class="status-bar loading" id="statusBar">🔄 Connecting...</div>
         
         <div class="chat-box" id="chatBox">
             <div class="message ai-message">
-                Hello! You can ask me to:<br>
-                1. Answer questions 📝<br>
-                2. Create Charts 📊<br>
-                3. <b>Add new tasks</b> using the green button below! ➕
+                Hi there! 👋<br>
+                I am connected to your Google Sheet.<br>
+                • Ask me about project status 📈<br>
+                • Or click <b>Add Task</b> to create new entries!
             </div>
         </div>
         
         <div class="input-group">
-            <input type="text" id="userInput" placeholder="Type here..." disabled onkeypress="if(event.key === 'Enter') sendMessage()">
-            
+            <input type="text" id="userInput" placeholder="Ask a question..." disabled onkeypress="if(event.key === 'Enter') sendMessage()">
             <button id="sendBtn" onclick="sendMessage()" disabled>Send</button>
-            
-            <!-- NEW: Add Task Button -->
             <button id="addTaskBtn" onclick="openModal()" disabled>➕ Add Task</button>
         </div>
     </div>
 
-    <!-- NEW: Modal for adding tasks -->
+    <!-- NEW FULL FORM MODAL -->
     <div id="taskModal" class="modal-overlay">
         <div class="modal-content">
-            <h3 style="margin-bottom:15px; color:#333;">📝 Add New Task</h3>
+            <h3 style="margin-bottom:20px; color:#333; border-bottom:1px solid #eee; padding-bottom:10px;">
+                📝 Add New Task
+            </h3>
             
-            <label style="font-size:12px; font-weight:bold; color:#666;">Task Name</label>
-            <input type="text" id="newTaskName" class="modal-input" placeholder="e.g. Finish Python Script">
+            <!-- Task Name -->
+            <div class="form-group">
+                <label class="form-label">Task Name</label>
+                <input type="text" id="t_name" class="form-input" placeholder="e.g. Design Homepage">
+            </div>
             
-            <label style="font-size:12px; font-weight:bold; color:#666;">Due Date</label>
-            <input type="date" id="newTaskDate" class="modal-input">
+            <!-- Assigned To -->
+            <div class="form-group">
+                <label class="form-label">Assigned To</label>
+                <input type="text" id="t_assign" class="form-input" placeholder="e.g. John Doe">
+            </div>
+
+            <!-- Dates Row -->
+            <div class="row">
+                <div class="form-group" style="flex:1">
+                    <label class="form-label">Start Date</label>
+                    <input type="date" id="t_start" class="form-input">
+                </div>
+                <div class="form-group" style="flex:1">
+                    <label class="form-label">End Date</label>
+                    <input type="date" id="t_end" class="form-input">
+                </div>
+            </div>
+
+            <!-- Status -->
+            <div class="form-group">
+                <label class="form-label">Status</label>
+                <select id="t_status" class="form-input">
+                    <option value="Not Started">Not Started</option>
+                    <option value="In Progress">In Progress</option>
+                    <option value="Completed">Completed</option>
+                    <option value="On Hold">On Hold</option>
+                </select>
+            </div>
             
-            <label style="font-size:12px; font-weight:bold; color:#666;">Description (Optional)</label>
-            <textarea id="newTaskDesc" class="modal-input" placeholder="Details..." style="height:80px; resize:none; font-family:inherit;"></textarea>
-            
-            <div class="modal-buttons">
-                <button onclick="submitTask()" style="flex:1; background:#28a745;">Save Task</button>
+            <!-- Buttons -->
+            <div class="modal-buttons" style="display:flex; gap:10px; margin-top:20px;">
+                <button onclick="submitTask()" style="flex:1; background:#28a745;">Save</button>
                 <button onclick="closeModal()" style="flex:1; background:#dc3545;">Cancel</button>
             </div>
         </div>
     </div>
 
     <script>
-        // Update this to your actual Render URL
+        // REPLACE WITH YOUR RENDER URL
         const API_URL = "https://aiproject-1-ipxt.onrender.com";
 
         window.addEventListener("load", checkStatus);
@@ -170,21 +188,22 @@
                         sb.className = "status-bar ready"; sb.innerText = "✅ System Ready";
                         toggleInput(true);
                     } else {
-                        sb.className = "status-bar error"; sb.innerText = "❌ Excel not loaded";
+                        sb.className = "status-bar error"; sb.innerText = "⚠️ Connected, but Sheet is empty";
+                        toggleInput(true); // Allow input anyway to add tasks
                     }
                 })
                 .catch(() => {
-                    document.getElementById("statusBar").innerText = "❌ Offline";
+                    document.getElementById("statusBar").innerText = "❌ Offline / Backend Error";
                 });
         }
 
-        // Updated to handle both buttons
         function toggleInput(enable) {
             document.getElementById("userInput").disabled = !enable;
             document.getElementById("sendBtn").disabled = !enable;
             document.getElementById("addTaskBtn").disabled = !enable;
         }
 
+        // --- CHAT LOGIC ---
         function sendMessage() {
             const input = document.getElementById("userInput");
             const txt = input.value.trim();
@@ -206,7 +225,7 @@
                 document.getElementById(loadId).remove();
                 addMessage(data.response, "ai-message");
                 if(data.type === "table") renderTable(data.table_data);
-                else if(data.type === "chart") renderChart(data.chart_data);
+                if(data.type === "chart") renderChart(data.chart_data);
             })
             .catch(e => {
                 document.getElementById(loadId).innerText = "Error: " + e;
@@ -217,108 +236,97 @@
             });
         }
 
-        // --- NEW MODAL FUNCTIONS ---
-        function openModal() {
-            document.getElementById("taskModal").style.display = "flex";
-        }
-
-        function closeModal() {
-            document.getElementById("taskModal").style.display = "none";
-        }
+        // --- MODAL LOGIC ---
+        function openModal() { document.getElementById("taskModal").style.display = "flex"; }
+        function closeModal() { document.getElementById("taskModal").style.display = "none"; }
 
         function submitTask() {
-            const name = document.getElementById("newTaskName").value;
-            const date = document.getElementById("newTaskDate").value;
-            const desc = document.getElementById("newTaskDesc").value;
+            // 1. Get Values
+            const name = document.getElementById("t_name").value;
+            const assign = document.getElementById("t_assign").value;
+            const start = document.getElementById("t_start").value;
+            const end = document.getElementById("t_end").value;
+            const status = document.getElementById("t_status").value;
 
-            if (!name || !date) {
-                alert("Please enter both Task Name and Date.");
+            // 2. Validate
+            if (!name || !start) {
+                alert("Please fill in at least Task Name and Start Date.");
                 return;
             }
 
             closeModal();
-            addMessage(`🛠 Adding task: "${name}"...`, "user-message");
+            addMessage(`🛠 Adding task "${name}"...`, "user-message");
 
-            // Assuming your backend has this endpoint
+            // 3. Send to Backend (MATCHING PYTHON MODELS)
             fetch(`${API_URL}/api/add-task`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ 
-                    name: name, 
-                    date: date, 
-                    description: desc 
+                    task_name: name,
+                    assigned_to: assign,
+                    start_date: start,
+                    end_date: end,
+                    status: status
                 })
             })
-            .then(r => r.json())
+            .then(r => {
+                if(!r.ok) throw new Error("Backend error");
+                return r.json();
+            })
             .then(data => {
-                // Clear inputs
-                document.getElementById("newTaskName").value = "";
-                document.getElementById("newTaskDate").value = "";
-                document.getElementById("newTaskDesc").value = "";
-                
-                // Show success message
-                addMessage("✅ " + (data.message || "Task added successfully!"), "ai-message");
+                addMessage("✅ " + data.message, "ai-message");
+                // Clear form
+                document.getElementById("t_name").value = "";
+                document.getElementById("t_assign").value = "";
             })
             .catch(e => {
-                addMessage("❌ Error adding task. Check backend logs.", "ai-message");
+                addMessage("❌ Failed to add task.", "ai-message");
                 console.error(e);
             });
         }
 
-        // --- EXISTING RENDER FUNCTIONS ---
-        function renderTable(tableData) {
-            const chatBox = document.getElementById("chatBox");
-            const container = document.createElement("div");
-            container.className = "table-container";
-            let html = `<table class="chat-table"><thead><tr>`;
-            tableData.columns.forEach(col => { html += `<th>${col}</th>`; });
-            html += `</tr></thead><tbody>`;
-            tableData.rows.forEach(row => {
-                html += `<tr>`;
-                row.forEach(cell => { html += `<td>${cell}</td>`; });
-                html += `</tr>`;
-            });
-            html += `</tbody></table>`;
-            container.innerHTML = html;
-            chatBox.appendChild(container);
-            chatBox.scrollTop = chatBox.scrollHeight;
-        }
-
-        function renderChart(chartData) {
-            const chatBox = document.getElementById("chatBox");
-            const div = document.createElement("div");
-            div.className = "chart-container";
-            const canvas = document.createElement("canvas");
-            canvas.id = "chart-" + Date.now();
-            canvas.style.maxHeight = "300px";
-            div.appendChild(canvas);
-            chatBox.appendChild(div);
-            chatBox.scrollTop = chatBox.scrollHeight;
-
-            new Chart(document.getElementById(canvas.id), {
-                type: chartData.chart_type,
-                data: {
-                    labels: chartData.data.labels,
-                    datasets: [{
-                        label: chartData.title,
-                        data: chartData.data.values,
-                        backgroundColor: '#667eea',
-                        borderColor: '#5a67d8',
-                        borderWidth: 1
-                    }]
-                },
-                options: { responsive: true, maintainAspectRatio: false }
-            });
-        }
-
+        // --- RENDER HELPERS ---
         function addMessage(text, cls) {
             const div = document.createElement("div");
             div.className = "message " + cls;
             div.innerHTML = text.replace(/\n/g, "<br>");
             div.id = "msg-" + Date.now();
-            document.getElementById("chatBox").appendChild(div);
-            document.getElementById("chatBox").scrollTop = document.getElementById("chatBox").scrollHeight;
+            const box = document.getElementById("chatBox");
+            box.appendChild(div);
+            box.scrollTop = box.scrollHeight;
             return div.id;
+        }
+
+        function renderTable(data) {
+            const box = document.getElementById("chatBox");
+            const div = document.createElement("div"); div.className = "table-container";
+            let h = `<table class="chat-table"><thead><tr>`;
+            data.columns.forEach(c => h += `<th>${c}</th>`);
+            h += `</tr></thead><tbody>`;
+            data.rows.forEach(r => {
+                h += `<tr>`; r.forEach(c => h += `<td>${c}</td>`); h += `</tr>`;
+            });
+            h += `</tbody></table>`;
+            div.innerHTML = h; box.appendChild(div); box.scrollTop = box.scrollHeight;
+        }
+
+        function renderChart(data) {
+            const box = document.getElementById("chatBox");
+            const div = document.createElement("div"); div.className = "chart-container";
+            const cvs = document.createElement("canvas"); cvs.id = "c-" + Date.now();
+            cvs.style.maxHeight = "300px";
+            div.appendChild(cvs); box.appendChild(div); box.scrollTop = box.scrollHeight;
+            new Chart(document.getElementById(cvs.id), {
+                type: data.chart_type,
+                data: {
+                    labels: data.data.labels,
+                    datasets: [{
+                        label: data.title,
+                        data: data.data.values,
+                        backgroundColor: '#667eea'
+                    }]
+                }
+            });
         }
     </script>
 </body>
