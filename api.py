@@ -8,7 +8,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from dotenv import load_dotenv
 
-# ✅ CHANGED: OpenAI Imports
+# OPENAI IMPORTS
 from langchain_openai import ChatOpenAI
 from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -27,13 +27,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ✅ CHANGED: Get OpenAI API Key
+# API KEY
 openai_key = os.getenv("OPENAI_API_KEY")
 
 # Global variables
 excel_text_context = ""
 document_loaded = False
-SHEET_NAME = "Task_Manager"  # Ensure this matches your Sheet Name
+SHEET_NAME = "Task_Manager"
 
 # --- DATA MODELS ---
 
@@ -87,7 +87,6 @@ def load_data_global():
         df = pd.DataFrame(data)
         df.fillna("N/A", inplace=True)
         
-        # Normalize dates
         for col in df.columns:
             if "date" in col.lower():
                 try:
@@ -111,7 +110,7 @@ async def startup_event():
 
 @app.get("/")
 def read_root():
-    return {"status": "active", "message": "Backend is running with OpenAI! 🧠"}
+    return {"status": "active", "message": "Backend is running with OpenAI + Tools + Charts! 📊"}
 
 @app.get("/api/status")
 def get_status():
@@ -131,14 +130,12 @@ def add_task(request: AddTaskRequest):
     except Exception as e:
         return {"message": f"Error: {str(e)}", "status": "error"}
 
-# 2. UPDATE TASK (Internal Logic)
+# 2. UPDATE TASK (Robust Version)
 @app.post("/api/update-task")
 def update_task_endpoint(request: UpdateTaskRequest):
-    result = internal_update_task(request.task_name, request.field_to_update, request.new_value)
-    return result
+    return internal_update_task(request.task_name, request.field_to_update, request.new_value)
 
 def internal_update_task(task_name, field, value):
-    """Updates the sheet and returns a status dict."""
     sheet = get_google_sheet()
     if not sheet:
         return {"message": "Connection Error", "status": "error"}
@@ -147,43 +144,41 @@ def internal_update_task(task_name, field, value):
         data = sheet.get_all_records()
         df = pd.DataFrame(data)
 
-        # Find task (Case insensitive search)
-        mask = df["Task Name"].astype(str).str.lower() == task_name.lower()
+        # Robust Column Mapping
+        col_map = {c.strip().lower().replace("_", " "): c for c in df.columns}
+        
+        task_col_actual = col_map.get("task name") or col_map.get("taskname") or col_map.get("task")
+        if not task_col_actual:
+            return {"message": "Could not find 'Task Name' column", "status": "error"}
+
+        target_col_clean = field.strip().lower().replace("_", " ")
+        target_col_actual = col_map.get(target_col_clean)
+        if not target_col_actual:
+            return {"message": f"Column '{field}' not found.", "status": "error"}
+
+        mask = df[task_col_actual].astype(str).str.strip().str.lower() == task_name.strip().lower()
         if not mask.any():
             return {"message": f"Task '{task_name}' not found.", "status": "error"}
 
-        # Find column
-        col_map = {c.strip().lower(): c for c in df.columns}
-        target_col = col_map.get(field.strip().lower())
-        if not target_col:
-            return {"message": f"Column '{field}' not found.", "status": "error"}
-
-        # Update
-        df.loc[mask, target_col] = value
+        df.loc[mask, target_col_actual] = value
         
-        # Save to Sheet (Clear & Rewrite is safest)
         sheet.clear()
         sheet.update([df.columns.values.tolist()] + df.values.tolist())
-        
-        load_data_global() # Refresh Memory
-        return {"message": f"Updated '{task_name}' - set {target_col} to '{value}'", "status": "success"}
+        load_data_global()
+        return {"message": f"✅ Updated '{task_name}': Set '{target_col_actual}' to '{value}'", "status": "success"}
 
     except Exception as e:
         return {"message": f"Error updating: {str(e)}", "status": "error"}
 
 
-# --- 3. SMART CHAT AGENT (OPENAI VERSION) ---
+# --- 3. SMART CHAT AGENT (TOOLS + CHARTS) ---
 
 @tool
 def update_sheet_tool(task_name: str, field: str, value: str):
     """
-    Updates a task in the Google Sheet.
-    Args:
-        task_name: The exact name of the task (e.g., 'Design Homepage').
-        field: The column name to update (Status, Assigned To, Start Date, End Date).
-        value: The new value to set (e.g., 'Completed', 'John Doe').
+    Updates a task in the Google Sheet. Use this ONLY when the user explicitly asks to modify/update data.
     """
-    print(f"🛠 Tool Triggered: Updating {task_name} | {field} -> {value}")
+    print(f"🛠 Tool Triggered: Updating {task_name}...")
     result = internal_update_task(task_name, field, value)
     return result["message"]
 
@@ -192,15 +187,11 @@ def chat(request: PromptRequest):
     global excel_text_context
     
     try:
-        # Reload if memory is empty
         if not document_loaded:
             load_data_global()
 
-        # 1. Define Tools
         tools = [update_sheet_tool]
         
-        # 2. Initialize OpenAI LLM
-        # using 'gpt-4o' or 'gpt-3.5-turbo' (both support tools well)
         llm = ChatOpenAI(
             model="gpt-4o", 
             openai_api_key=openai_key,
@@ -208,17 +199,42 @@ def chat(request: PromptRequest):
         )
         llm_with_tools = llm.bind_tools(tools)
 
-        # 3. System Prompt
+        # --- SYSTEM PROMPT: INCLUDES CHARTS & TABLES ---
         system_msg = f"""
-        You are a Project Manager Assistant.
+        You are a smart Project Manager Assistant.
         
         CURRENT DATA:
         {excel_text_context}
         
         INSTRUCTIONS:
-        - If the user asks to UPDATE, CHANGE, or MODIFY a task, YOU MUST USE the 'update_sheet_tool'.
-        - If the user asks a question, answer from the data.
-        - Do NOT hallucinate. Only confirm update if the tool is called.
+        1. **ACTION**: If the user asks to UPDATE/CHANGE data, call the 'update_sheet_tool'.
+        
+        2. **VISUALIZATION**: If the user asks for a TABLE, LIST, or CHART/GRAPH, you MUST return a strict JSON object (Markdown formatted).
+           
+           - FORMAT FOR TABLE:
+             ```json
+             {{
+               "is_table": true,
+               "title": "Task List",
+               "columns": ["Task Name", "Status", "Assigned To"],
+               "rows": [["Design", "Done", "John"], ["Dev", "Pending", "Jane"]],
+               "summary": "Here is the list of tasks."
+             }}
+             ```
+             
+           - FORMAT FOR CHART:
+             ```json
+             {{
+               "is_chart": true,
+               "chart_type": "bar", 
+               "title": "Tasks by Status",
+               "data": {{ "labels": ["Done", "Pending"], "values": [5, 2] }},
+               "summary": "Here is the breakdown by status."
+             }}
+             ```
+             (chart_type can be: bar, pie, line, doughnut)
+
+        3. **TEXT**: Otherwise, answer normally in plain text.
         """
 
         messages = [
@@ -226,31 +242,44 @@ def chat(request: PromptRequest):
             HumanMessage(content=request.prompt)
         ]
 
-        # 4. Invoke LLM
-        print("🤖 AI Thinking (OpenAI)...")
+        # Invoke LLM
+        print("🤖 AI Thinking...")
         ai_response = llm_with_tools.invoke(messages)
 
-        # 5. Handle Tool Call
+        # --- CASE A: TOOL CALL (UPDATE) ---
         if ai_response.tool_calls:
-            print("🔧 AI decided to use a tool:", ai_response.tool_calls)
-            
+            print("🔧 AI using Tool:", ai_response.tool_calls)
             for tool_call in ai_response.tool_calls:
-                # Map the tool name to the function
                 selected_tool = {"update_sheet_tool": update_sheet_tool}[tool_call["name"].lower()]
-                
-                # Run the tool
                 tool_output = selected_tool.invoke(tool_call["args"])
-                
-                # Return result immediately
                 return {
                     "response": f"✅ {tool_output}",
                     "type": "text",
                     "status": "success"
                 }
 
-        # 6. Regular Text Response
+        # --- CASE B: CHECK FOR JSON (CHARTS/TABLES) ---
+        content = ai_response.content.strip()
+        
+        if "```json" in content:
+            # Extract JSON from Markdown
+            try:
+                clean_json = content.split("```json")[1].split("```")[0].strip()
+                data_obj = json.loads(clean_json)
+                
+                if data_obj.get("is_chart"):
+                    return {"response": data_obj["summary"], "chart_data": data_obj, "type": "chart", "status": "success"}
+                
+                if data_obj.get("is_table"):
+                    return {"response": data_obj["summary"], "table_data": data_obj, "type": "table", "status": "success"}
+            except Exception as e:
+                print(f"JSON Parse Error: {e}")
+                # Fallback to returning raw text if parsing fails
+                pass
+
+        # --- CASE C: REGULAR TEXT ---
         return {
-            "response": ai_response.content,
+            "response": content,
             "type": "text",
             "status": "success"
         }
@@ -262,3 +291,4 @@ def chat(request: PromptRequest):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+```*
