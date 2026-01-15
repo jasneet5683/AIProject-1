@@ -12,6 +12,10 @@ from oauth2client.service_account import ServiceAccountCredentials
 from langchain_google_genai import ChatGoogleGenerativeAI
 from dotenv import load_dotenv
 
+#for message update
+from langchain_core.tools import tool
+from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
+
 # Load environment variables
 load_dotenv()
 
@@ -217,66 +221,155 @@ def update_task(request: UpdateTaskRequest):
     except Exception as e:
         return {"message": f"Error updating task: {str(e)}", "status": "error"}
 
-# 3. CHAT ENDPOINT (Unchanged logic, uses new global context)
+# --- SMART CHAT ENDPOINT WITH TOOLS ---
+
+@tool
+def update_sheet_tool(task_name: str, field: str, value: str):
+    """
+    Updates a task in the Google Sheet.
+    Args:
+        task_name: The exact name of the task.
+        field: The column to update (Status, Assigned To, Start Date, End Date).
+        value: The new value to set.
+    """
+    # Reuse the logic from our update_task endpoint!
+    # We create a fake request object to reuse the logic
+    req = UpdateTaskRequest(task_name=task_name, field_to_update=field, new_value=value)
+    result = update_task(req) # Call the existing python function
+    return result["message"]
+
 @app.post("/api/chat")
 def chat(request: PromptRequest):
     global excel_text_context
     
     try:
         if not document_loaded:
-            # Try reloading one more time if missing
             load_data_global()
-            if not document_loaded:
-                return {"response": "System is offline or Google Sheet not connected.", "status": "error"}
 
-        # SYSTEM INSTRUCTION
-        system_instruction = f"""
-        You are a Data Analyst AI. 
-        Below is the Project Data from Google Sheets:
+        # 1. Define the Tools the AI can use
+        tools = [update_sheet_tool]
         
-        --- DATA START ---
-        {excel_text_context}
-        --- DATA END ---
-
-        INSTRUCTIONS:
-        1. Analyze the data above to answer the user's question.
-        2. Be precise with numbers, dates, and names.
-        
-        OUTPUT FORMATS (Strict JSON):
-        A) FOR TABLES/LISTS: {{ "is_table": true, "title": "...", "columns": [...], "rows": [...], "summary": "..." }}
-        B) FOR CHARTS: {{ "is_chart": true, "chart_type": "bar", "title": "...", "data": {{ "labels": [...], "values": [...] }}, "summary": "..." }}
-        C) FOR TEXT: Return plain text.
-        """
-
+        # 2. Bind tools to the LLM
         llm = ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash",  
+            model="gemini-2.5-flash",
             google_api_key=api_key,
             temperature=0
         )
-        
-        full_prompt = f"{system_instruction}\n\nUser Question: {request.prompt}"
-        
-        response = llm.invoke(full_prompt)
-        content = response.content.strip()
-        
-        # Clean Markdown
-        clean_content = content.replace("```json", "").replace("```", "").strip()
+        llm_with_tools = llm.bind_tools(tools)
 
-        try:
-            data_obj = json.loads(clean_content)
-            if data_obj.get("is_chart") is True:
-                return {"response": data_obj["summary"], "chart_data": data_obj, "type": "chart", "status": "success"}
-            if data_obj.get("is_table") is True:
-                 return {"response": data_obj["summary"], "table_data": data_obj, "type": "table", "status": "success"}
-        except:
-            pass
+        # 3. Create the Conversation Context
+        system_msg = f"""
+        You are a Project Manager AI. 
+        You have access to a tool called 'update_sheet_tool' to modify the Google Sheet.
+        
+        CURRENT DATA:
+        {excel_text_context}
+        
+        INSTRUCTIONS:
+        - If the user asks to UPDATE, CHANGE, or MARK a task, USE THE TOOL.
+        - If the user asks a question, just answer from the data.
+        - Don't make up confirmation messages unless the tool runs successfully.
+        """
 
-        return {"response": clean_content, "type": "text", "status": "success"}
+        messages = [
+            SystemMessage(content=system_msg),
+            HumanMessage(content=request.prompt)
+        ]
+
+        # 4. Invoke the AI
+        ai_response = llm_with_tools.invoke(messages)
+
+        # 5. Check if the AI wants to use a Tool
+        if ai_response.tool_calls:
+            print("🤖 AI wants to use a tool:", ai_response.tool_calls)
+            
+            for tool_call in ai_response.tool_calls:
+                # Extract arguments provided by AI
+                args = tool_call["args"]
+                
+                # Execute the actual Python function
+                tool_result = update_sheet_tool.invoke(args)
+                
+                # Update Memory
+                load_data_global()
+                
+                return {
+                    "response": f"✅ Action Taken: {tool_result}",
+                    "type": "text",
+                    "status": "success"
+                }
+
+        # 6. If no tool needed, just return the text response
+        return {
+            "response": ai_response.content,
+            "type": "text",
+            "status": "success"
+        }
 
     except Exception as e:
-        return {"response": f"Internal Error: {str(e)}", "status": "error"}
+        return {"response": f"Error: {str(e)}", "status": "error"}
+        
+# 3. CHAT ENDPOINT (Unchanged logic, uses new global context)
+# @app.post("/api/chat")
+# def chat(request: PromptRequest):
+#    global excel_text_context
+    
+ #   try:
+ #       if not document_loaded:
+  #          # Try reloading one more time if missing
+  #          load_data_global()
+  #          if not document_loaded:
+  #              return {"response": "System is offline or Google Sheet not connected.", "status": "error"}
+
+   #     # SYSTEM INSTRUCTION
+    #    system_instruction = f"""
+    #    You are a Data Analyst AI. 
+    #    Below is the Project Data from Google Sheets:
+        
+     #   --- DATA START ---
+     #   {excel_text_context}
+     #   --- DATA END ---
+
+     #   INSTRUCTIONS:
+        1. Analyze the data above to answer the user's question.
+     #   2. Be precise with numbers, dates, and names.
+        
+      #  OUTPUT FORMATS (Strict JSON):
+     #   A) FOR TABLES/LISTS: {{ "is_table": true, "title": "...", "columns": [...], "rows": [...], "summary": "..." }}
+     #   B) FOR CHARTS: {{ "is_chart": true, "chart_type": "bar", "title": "...", "data": {{ "labels": [...], "values": [...] }}, "summary": "..." }}
+     #   C) FOR TEXT: Return plain text.
+     #   """
+
+     #   llm = ChatGoogleGenerativeAI(
+     #       model="gemini-2.5-flash",  
+     #       google_api_key=api_key,
+     #       temperature=0
+     #   )
+        
+      #  full_prompt = f"{system_instruction}\n\nUser Question: {request.prompt}"
+        
+      #  response = llm.invoke(full_prompt)
+      #  content = response.content.strip()
+        
+      #  # Clean Markdown
+      #  clean_content = content.replace("```json", "").replace("```", "").strip()
+
+      #  try:
+      #      data_obj = json.loads(clean_content)
+      #      if data_obj.get("is_chart") is True:
+      #          return {"response": data_obj["summary"], "chart_data": data_obj, "type": "chart", "status": "success"}
+      #      if data_obj.get("is_table") is True:
+      #           return {"response": data_obj["summary"], "table_data": data_obj, "type": "table", "status": "success"}
+      #  except:
+      #      pass
+
+      #  return {"response": clean_content, "type": "text", "status": "success"}
+
+   # except Exception as e:
+   #     return {"response": f"Internal Error: {str(e)}", "status": "error"}
 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
     
+
