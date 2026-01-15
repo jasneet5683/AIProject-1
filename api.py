@@ -331,7 +331,7 @@ def chat(request: PromptRequest):
      #   --- DATA END ---
 
      #   INSTRUCTIONS:
-        1. Analyze the data above to answer the user's question.
+     #   1. Analyze the data above to answer the user's question.
      #   2. Be precise with numbers, dates, and names.
         
       #  OUTPUT FORMATS (Strict JSON):
@@ -372,4 +372,5 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
     
+
 
