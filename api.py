@@ -198,9 +198,9 @@ def chat(request: PromptRequest):
         tools = [update_sheet_tool]
         
         # 2. Initialize LLM (Using a standard supported model)
-        # Trying gemini-2.0-flash-exp (Fast & Smart) or gemini-1.5-flash
+        # Trying gemini-2.5-flash (Fast & Smart) or gemini-1.5-flash
         llm = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash-exp", 
+            model="gemini-2.5-flash", 
             google_api_key=api_key,
             temperature=0
         )
@@ -260,6 +260,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
     
+
 
 
 
