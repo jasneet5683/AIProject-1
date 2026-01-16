@@ -16,6 +16,13 @@ from langchain_openai import ChatOpenAI
 from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage, SystemMessage
 
+#added for Email Attachement support
+import matplotlib
+matplotlib.use('Agg') # Required for Render/Server usage
+import matplotlib.pyplot as plt
+import io
+import base64
+
 # Load environment variables
 load_dotenv()
 
@@ -101,38 +108,82 @@ def load_data_global():
         print(f"❌ Error processing data: {str(e)}")
         document_loaded = False
 
+# Helper for Chart Genertor function
+def generate_chart_base64(df):
+    try:
+        df = load_data_global() 
+        
+        if df.empty:
+            return None
+        # 1. Clear any existing plots
+        plt.clf()
+        
+        # 2. Create the plot (e.g., Tasks per Client or Status)
+        # You can change 'Status' to 'Client' if you prefer
+        counts = df['Status'].value_counts()
+        
+        plt.figure(figsize=(8, 5))
+        counts.plot(kind='bar', color='#667eea')
+        plt.title('Project Status Overview')
+        plt.xlabel('Status')
+        plt.ylabel('Count')
+        plt.tight_layout()
+        
+        # 3. Save to a memory buffer (BytesIO)
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png')
+        buf.seek(0)
+        
+        # 4. Convert to Base64 String
+        img_str = base64.b64encode(buf.read()).decode('utf-8')
+        
+        # 5. Cleanup
+        plt.close()
+        
+        return img_str
+    except Exception as e:
+        print(f"Chart generation failed: {e}")
+        return None
 
 # --- 3. HELPER: EMAIL SENDER (UPDATED FOR RENDER) debug ---
-def internal_send_email(to_email, subject, body):
+def internal_send_email(to_email, subject, body, chart_base64=None):
     api_key = os.getenv("BREVO_API_KEY")
     sender_email = os.getenv("SENDER_EMAIL")
     sender_name = os.getenv("SENDER_NAME", "AI Assistant")
 
     # --- DEBUGGING START ---
-    print(f"DEBUG: Sender: {sender_email}")
-    if api_key:
-        print(f"DEBUG: API Key loaded? Yes (Starts with: {api_key[:5]}...)")
-    else:
-        print("DEBUG: API Key loaded? NO")
+  #  print(f"DEBUG: Sender: {sender_email}")
+  #  if api_key:
+  #      print(f"DEBUG: API Key loaded? Yes (Starts with: {api_key[:5]}...)")
+  #  else:
+  #      print("DEBUG: API Key loaded? NO")
     # --- DEBUGGING END ---
 
     if not api_key:
         return {"message": "❌ Missing BREVO_API_KEY in environment", "status": "error"}
 
     url = "https://api.brevo.com/v3/smtp/email"
-    
-    payload = {
-        "sender": {"name": sender_name, "email": sender_email},
-        "to": [{"email": to_email}],
-        "subject": subject,
-        "htmlContent": f"<p>{body}</p>"
-    }
-    
     headers = {
         "accept": "application/json",
         "api-key": api_key,
         "content-type": "application/json"
     }
+    
+    payload = {
+        "sender": {"name": sender_name, "email": sender_email},
+        "to": [{"email": to_email}],
+        "subject": subject,
+        "htmlContent": f"<p>{body}</p><p>Please find the project status chart attached.</p>"
+    }
+    
+    # IF we have a chart, add it as an attachment
+    if chart_base64:
+        payload["attachment"] = [
+            {
+                "content": chart_base64,
+                "name": "status_chart.png"
+            }
+        ]
 
     try:
         response = requests.post(url, json=payload, headers=headers)
@@ -249,7 +300,12 @@ def send_email_tool(to_email: str, subject: str, body: str):
     Do not ask for confirmation, just send it.
     """
     print(f"📧 Tool Triggered: Sending email to {to_email}...")
-    result = internal_send_email(to_email, subject, body)
+# 1. Generate the chart strictly inside the tool
+    chart_image = generate_chart_base64()
+ # 2. Pass the chart to the internal sender
+    result = internal_send_email(to_email, subject, body, chart_base64=chart_image)
+    
+    #result = internal_send_email(to_email, subject, body)
     return result["message"]
 
 # --- 8. CHAT AGENT (UPDATED) ---
@@ -376,6 +432,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
     
+
 
 
 
