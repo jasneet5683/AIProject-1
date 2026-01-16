@@ -44,6 +44,13 @@ document_loaded = False
 class PromptRequest(BaseModel):
     prompt: str
 
+class TaskRequest(BaseModel):
+    task_name: str
+    assigned_to: str
+    start_date: str
+    end_date: str
+    status: str
+
 # --- 1. HELPER: CONNECT TO GOOGLE SHEETS ---
 def get_google_sheet():
     try:
@@ -194,6 +201,32 @@ def read_root():
 def get_status():
     return {"document_loaded": document_loaded, "data_preview": excel_text_context[:100]}
 
+@app.post("/api/add-task")
+def add_task(task: TaskRequest):
+    sheet = get_google_sheet()
+    if not sheet:
+        return {"message": "Database connection failed", "status": "error"}
+    try:
+        # Append the new row
+        # Ensure the order matches your Google Sheet columns!
+        new_row = [
+            task.task_name, 
+            task.assigned_to, 
+            task.status, 
+            task.start_date, 
+            task.end_date
+        ]
+        
+        sheet.append_row(new_row)
+        
+        # Refresh the global data cache so the AI knows about the new task
+        load_data_global()
+        
+        return {"message": f"Task '{task.task_name}' added successfully!", "status": "success"}
+    except Exception as e:
+        return {"message": f"Failed to add task: {str(e)}", "status": "error"}
+
+
 # --- 7. LANGCHAIN TOOLS ---
 
 @tool
@@ -341,6 +374,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
     
+
 
 
 
