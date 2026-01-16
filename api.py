@@ -50,6 +50,7 @@ class TaskRequest(BaseModel):
     start_date: str
     end_date: str
     status: str
+    client: str
 
 # --- 1. HELPER: CONNECT TO GOOGLE SHEETS ---
 def get_google_sheet():
@@ -214,7 +215,8 @@ def add_task(task: TaskRequest):
             task.start_date, 
             task.end_date,
             task.status,
-            task.assigned_to
+            task.assigned_to,
+            task.client
         ]
         
         sheet.append_row(new_row)
@@ -222,7 +224,7 @@ def add_task(task: TaskRequest):
         # Refresh the global data cache so the AI knows about the new task
         load_data_global()
         
-        return {"message": f"Task '{task.task_name}' added successfully!", "status": "success"}
+        return {"message": f"Task '{task.task_name}' added for {task.client}!successfully!", "status": "success"}
     except Exception as e:
         return {"message": f"Failed to add task: {str(e)}", "status": "error"}
 
@@ -374,6 +376,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
     
+
 
 
 
