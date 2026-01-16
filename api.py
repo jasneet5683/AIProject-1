@@ -217,7 +217,7 @@ def send_email_tool(to_email: str, subject: str, body: str):
     result = internal_send_email(to_email, subject, body)
     return result["message"]
 
-# --- 8. CHAT AGENT ---
+# --- 8. CHAT AGENT (UPDATED) ---
 
 @app.post("/api/chat")
 def chat(request: PromptRequest):
@@ -242,6 +242,7 @@ def chat(request: PromptRequest):
         )
         llm_with_tools = llm.bind_tools(tools)
 
+        # UPDATED SYSTEM MESSAGE TO INCLUDE TABLE FORMAT
         system_msg = f"""
         You are an advanced Project Manager Agent with REAL-WORLD CAPABILITIES.
         
@@ -255,11 +256,25 @@ def chat(request: PromptRequest):
         INSTRUCTIONS:
         - If the user asks to "Send an email to [email]", call 'send_email_tool' immediately.
         - If the user provides a vague email request (e.g., "Email John"), check the data for an email address or ask for it.
-        - If the user asks for a Chart/Table, return this specific JSON format:
+        - If the user asks for a Chart or Table, return the specific JSON format below. Do not return Markdown tables.
         
         FORMAT FOR CHART:
         ```json
         {{ "is_chart": true, "chart_type": "bar", "title": "Tasks by Status", "data": {{ "labels": ["Done", "Pending"], "values": [5, 2] }}, "summary": "Here is the chart." }}
+        ```
+
+        FORMAT FOR TABLE:
+        ```json
+        {{
+            "is_table": true,
+            "title": "Task Overview",
+            "headers": ["Task Name", "Status", "Due Date"],
+            "rows": [
+                ["Fix Bug", "Done", "2023-10-01"],
+                ["Write Docs", "Pending", "2023-10-05"]
+            ],
+            "summary": "Here is the table you requested."
+        }}
         ```
         """
 
@@ -297,15 +312,18 @@ def chat(request: PromptRequest):
         content = ai_response.content.strip()
         if "```json" in content:
             try:
+                # Extract JSON from code blocks
                 clean_json = content.split("```json")[1].split("```")[0].strip()
                 data_obj = json.loads(clean_json)
                 
                 if data_obj.get("is_chart"):
                     return {"response": data_obj["summary"], "chart_data": data_obj, "type": "chart", "status": "success"}
                 
+                # THIS BLOCK WILL NOW WORK BECAUSE THE AI KNOWS HOW TO GENERATE IT
                 if data_obj.get("is_table"):
                     return {"response": data_obj["summary"], "table_data": data_obj, "type": "table", "status": "success"}
-            except Exception:
+            except Exception as e:
+                print(f"JSON Parsing Error: {e}")
                 pass
 
         # --- CASE C: TEXT ---
@@ -323,6 +341,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
     
+
 
 
 
