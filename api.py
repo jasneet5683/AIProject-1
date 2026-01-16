@@ -92,7 +92,7 @@ def load_data_global():
         print(f"❌ Error processing data: {str(e)}")
         document_loaded = False
 
-# --- 3. HELPER: EMAIL SENDER ---
+# --- 3. HELPER: EMAIL SENDER (UPDATED FOR RENDER) ---
 def internal_send_email(to_email, subject, body):
     try:
         if not email_sender or not email_password:
@@ -104,8 +104,13 @@ def internal_send_email(to_email, subject, body):
         msg['From'] = email_sender
         msg['To'] = to_email
 
-        # Gmail SMTP Port 465 (SSL)
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+        # ---------------------------------------------------------
+        # FIX: Use Port 587 (STARTTLS) instead of 465 (SSL)
+        # ---------------------------------------------------------
+        with smtplib.SMTP('smtp.gmail.com', 587) as smtp:
+            smtp.ehlo()        # Identify ourselves to the server
+            smtp.starttls()    # Encrypt the connection
+            smtp.ehlo()        # Re-identify as an encrypted connection
             smtp.login(email_sender, email_password)
             smtp.send_message(msg)
         
@@ -296,3 +301,4 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
     
+
