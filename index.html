@@ -298,17 +298,46 @@
         }
 
         function renderTable(data) {
-            const box = document.getElementById("chatBox");
-            const div = document.createElement("div"); div.className = "table-container";
-            let h = `<table class="chat-table"><thead><tr>`;
-            data.columns.forEach(c => h += `<th>${c}</th>`);
-            h += `</tr></thead><tbody>`;
-            data.rows.forEach(r => {
-                h += `<tr>`; r.forEach(c => h += `<td>${c}</td>`); h += `</tr>`;
-            });
-            h += `</tbody></table>`;
-            div.innerHTML = h; box.appendChild(div); box.scrollTop = box.scrollHeight;
-        }
+    // 1. SAFETY CHECK: Prevents crashes if backend sends empty data
+    if (!data || !data.headers || !data.rows) {
+        console.error("Invalid table data received:", data);
+        addMessage("⚠️ Received incomplete table data.", "ai-message");
+        return;
+    }
+
+    const box = document.getElementById("chatBox");
+    const div = document.createElement("div"); 
+    div.className = "table-container";
+    
+    // 2. BUILD TABLE HTML
+    let html = `<table class="chat-table">
+        <thead><tr>`;
+    
+    // Fixed: Changed 'data.columns' to 'data.headers'
+    data.headers.forEach(header => {
+        html += `<th>${header}</th>`;
+    });
+    
+    html += `</tr></thead><tbody>`;
+    
+    // Render Rows
+    data.rows.forEach(row => {
+        html += `<tr>`;
+        row.forEach(cell => {
+            // Added check for null values to keep the table clean
+            html += `<td>${cell || ''}</td>`;
+        });
+        html += `</tr>`;
+    });
+    
+    html += `</tbody></table>`;
+    
+    // 3. INJECT INTO CHAT
+    div.innerHTML = html;
+    box.appendChild(div);
+    box.scrollTop = box.scrollHeight;
+}
+
 
         function renderChart(data) {
             const box = document.getElementById("chatBox");
@@ -331,3 +360,4 @@
     </script>
 </body>
 </html>
+
