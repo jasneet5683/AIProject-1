@@ -93,14 +93,23 @@ def load_data_global():
         print(f"❌ Error processing data: {str(e)}")
         document_loaded = False
 
-# --- 3. HELPER: EMAIL SENDER (VIA API - WORKS ON RENDER) ---
+
+# --- 3. HELPER: EMAIL SENDER (UPDATED FOR RENDER) debug ---
 def internal_send_email(to_email, subject, body):
     api_key = os.getenv("BREVO_API_KEY")
     sender_email = os.getenv("SENDER_EMAIL")
-    sender_name = os.getenv("SENDER_NAME")
+    sender_name = os.getenv("SENDER_NAME", "AI Assistant")
+
+    # --- DEBUGGING START ---
+    print(f"DEBUG: Sender: {sender_email}")
+    if api_key:
+        print(f"DEBUG: API Key loaded? Yes (Starts with: {api_key[:5]}...)")
+    else:
+        print("DEBUG: API Key loaded? NO")
+    # --- DEBUGGING END ---
 
     if not api_key:
-        return {"message": "❌ Missing BREVO_API_KEY in .env", "status": "error"}
+        return {"message": "❌ Missing BREVO_API_KEY in environment", "status": "error"}
 
     url = "https://api.brevo.com/v3/smtp/email"
     
@@ -123,10 +132,13 @@ def internal_send_email(to_email, subject, body):
         if response.status_code == 201:
             return {"message": f"✅ Email sent to {to_email} successfully!", "status": "success"}
         else:
+            # Print the full error from Brevo for debugging
+            print(f"BREVO ERROR: {response.text}")
             return {"message": f"❌ Failed: {response.text}", "status": "error"}
             
     except Exception as e:
         return {"message": f"❌ Error: {str(e)}", "status": "error"}
+
 
 # --- 4. HELPER: UPDATE TASK ---
 def internal_update_task(task_name, field, value):
@@ -311,5 +323,6 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
     
+
 
 
