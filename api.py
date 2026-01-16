@@ -211,10 +211,10 @@ def add_task(task: TaskRequest):
         # Ensure the order matches your Google Sheet columns!
         new_row = [
             task.task_name, 
-            task.assigned_to, 
-            task.status, 
             task.start_date, 
-            task.end_date
+            task.end_date,
+            task.status,
+            task.assigned_to
         ]
         
         sheet.append_row(new_row)
@@ -374,6 +374,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
     
+
 
 
 
