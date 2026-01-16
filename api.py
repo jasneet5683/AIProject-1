@@ -1,8 +1,8 @@
 import json
 import os
 import smtplib
-from email.message import EmailMessage
 import pandas as pd
+from email.message import EmailMessage
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -20,6 +20,7 @@ load_dotenv()
 
 app = FastAPI()
 
+# Enable CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -28,24 +29,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# API KEYS
+# --- CONFIGURATION ---
 openai_key = os.getenv("OPENAI_API_KEY")
 email_sender = os.getenv("EMAIL_SENDER")
 email_password = os.getenv("EMAIL_PASSWORD")
+SHEET_NAME = "Task_Manager"  # Make sure this matches your Google Sheet Name exactly
 
-# Global variables
+# Global variables to hold data state
 excel_text_context = ""
 document_loaded = False
-SHEET_NAME = "Task_Manager"
 
+# --- DATA MODELS ---
 class PromptRequest(BaseModel):
     prompt: str
 
-# --- HELPER: CONNECT TO GOOGLE SHEETS ---
+# --- 1. HELPER: CONNECT TO GOOGLE SHEETS ---
 def get_google_sheet():
     try:
         json_creds = os.getenv("GOOGLE_CREDS")
         if not json_creds:
+            print("❌ Error: GOOGLE_CREDS not found in environment.")
             return None
         creds_dict = json.loads(json_creds)
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -56,11 +59,44 @@ def get_google_sheet():
         print(f"❌ Connection Error: {e}")
         return None
 
-# --- HELPER: SEND EMAIL FUNCTION ---
+# --- 2. HELPER: LOAD DATA (Fixes 'Sheet is Empty') ---
+def load_data_global():
+    global excel_text_context, document_loaded
+    print("🔄 Loading data from Google Sheets...")
+    sheet = get_google_sheet()
+    if not sheet:
+        document_loaded = False
+        return
+
+    try:
+        data = sheet.get_all_records()
+        if not data:
+            print("⚠️ Sheet is empty or couldn't read records.")
+            excel_text_context = "No data found."
+            document_loaded = True
+            return
+
+        df = pd.DataFrame(data)
+        df.fillna("N/A", inplace=True)
+        
+        # Convert dates to string to avoid errors
+        for col in df.columns:
+            if "date" in col.lower():
+                df[col] = df[col].astype(str)
+
+        excel_text_context = df.to_csv(index=False)
+        document_loaded = True
+        print("✅ Data Successfully Loaded into Memory.")
+        
+    except Exception as e:
+        print(f"❌ Error processing data: {str(e)}")
+        document_loaded = False
+
+# --- 3. HELPER: EMAIL SENDER ---
 def internal_send_email(to_email, subject, body):
     try:
         if not email_sender or not email_password:
-            return {"message": "Email credentials missing in .env", "status": "error"}
+            return {"message": "❌ Email credentials missing in .env", "status": "error"}
 
         msg = EmailMessage()
         msg.set_content(body)
@@ -68,73 +104,70 @@ def internal_send_email(to_email, subject, body):
         msg['From'] = email_sender
         msg['To'] = to_email
 
-        # Connect to Gmail SMTP
+        # Gmail SMTP Port 465 (SSL)
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
             smtp.login(email_sender, email_password)
             smtp.send_message(msg)
         
-        return {"message": f"✅ Email sent to {to_email}!", "status": "success"}
+        return {"message": f"✅ Email sent to {to_email} successfully!", "status": "success"}
     except Exception as e:
         return {"message": f"❌ Error sending email: {str(e)}", "status": "error"}
 
-# --- DATA LOADING ---
-def load_data_global():
-    global excel_text_context, document_loaded
-    sheet = get_google_sheet()
-    if not sheet:
-        document_loaded = False
-        return
-    try:
-        data = sheet.get_all_records()
-        if not data:
-            excel_text_context = ""
-            document_loaded = True
-            return
-        df = pd.DataFrame(data)
-        df.fillna("N/A", inplace=True)
-        excel_text_context = df.to_csv(index=False)
-        document_loaded = True
-        print("✅ Data Loaded.")
-    except Exception:
-        document_loaded = False
-
-@app.on_event("startup")
-async def startup_event():
-    load_data_global()
-
-# --- SHEET UPDATE LOGIC ---
+# --- 4. HELPER: UPDATE TASK ---
 def internal_update_task(task_name, field, value):
     sheet = get_google_sheet()
-    if not sheet: return {"message": "Connection Error", "status": "error"}
+    if not sheet:
+        return {"message": "Connection Error", "status": "error"}
 
     try:
         data = sheet.get_all_records()
         df = pd.DataFrame(data)
-        
-        # Robust Column Search
+
+        # Flexible column matching
         col_map = {c.strip().lower().replace("_", " "): c for c in df.columns}
         
         task_col_actual = col_map.get("task name") or col_map.get("taskname") or col_map.get("task")
-        if not task_col_actual: return {"message": "Task Column not found", "status": "error"}
+        if not task_col_actual:
+            return {"message": "Could not find 'Task Name' column", "status": "error"}
 
         target_col_clean = field.strip().lower().replace("_", " ")
         target_col_actual = col_map.get(target_col_clean)
-        if not target_col_actual: return {"message": f"Column '{field}' not found", "status": "error"}
+        if not target_col_actual:
+            return {"message": f"Column '{field}' not found.", "status": "error"}
 
         mask = df[task_col_actual].astype(str).str.strip().str.lower() == task_name.strip().lower()
-        if not mask.any(): return {"message": f"Task '{task_name}' not found", "status": "error"}
+        if not mask.any():
+            return {"message": f"Task '{task_name}' not found.", "status": "error"}
 
         df.loc[mask, target_col_actual] = value
         
         sheet.clear()
         sheet.update([df.columns.values.tolist()] + df.values.tolist())
-        load_data_global()
-        return {"message": f"✅ Updated '{task_name}' ({target_col_actual} -> {value})", "status": "success"}
+        load_data_global() # Refresh memory after update
+        return {"message": f"✅ Updated '{task_name}': Set '{target_col_actual}' to '{value}'", "status": "success"}
 
     except Exception as e:
-        return {"message": f"Error updating: {e}", "status": "error"}
+        return {"message": f"Error updating: {str(e)}", "status": "error"}
 
-# --- 3. SMART CHAT AGENT (TOOLS + CHARTS) ---
+
+# --- 5. APP STARTUP EVENT ---
+@app.on_event("startup")
+async def startup_event():
+    # This runs when Render starts the server
+    load_data_global()
+
+# --- 6. API ENDPOINTS ---
+
+# Fixes 404 Error
+@app.get("/")
+def read_root():
+    return {"status": "active", "message": "Backend is running. Data loaded: " + str(document_loaded)}
+
+@app.get("/api/status")
+def get_status():
+    return {"document_loaded": document_loaded, "data_preview": excel_text_context[:100]}
+
+# --- 7. LANGCHAIN TOOLS ---
 
 @tool
 def update_sheet_tool(task_name: str, field: str, value: str):
@@ -157,18 +190,19 @@ def send_email_tool(to_email: str, subject: str, body: str):
     result = internal_send_email(to_email, subject, body)
     return result["message"]
 
+# --- 8. CHAT AGENT ---
+
 @app.post("/api/chat")
 def chat(request: PromptRequest):
     global excel_text_context
     
     try:
-        if not document_loaded:
+        # Reload if empty
+        if not document_loaded or not excel_text_context:
             load_data_global()
 
-        # 1. Bind Tools
+        # Define Tools
         tools = [update_sheet_tool, send_email_tool]
-        
-        # 2. Create Tool Map (for execution later)
         tool_map = {
             "update_sheet_tool": update_sheet_tool,
             "send_email_tool": send_email_tool
@@ -181,7 +215,6 @@ def chat(request: PromptRequest):
         )
         llm_with_tools = llm.bind_tools(tools)
 
-        # 3. System Prompt - EXPLICIT PERMISSIONS
         system_msg = f"""
         You are an advanced Project Manager Agent with REAL-WORLD CAPABILITIES.
         
@@ -190,12 +223,17 @@ def chat(request: PromptRequest):
         
         YOUR TOOLS (You MUST use them when requested):
         1. 'update_sheet_tool': Use this to change data in the sheet.
-        2. 'send_email_tool': Use this to send actual emails. **You are authorized to send emails.** Do not say you cannot do it.
+        2. 'send_email_tool': Use this to send actual emails. **You are authorized to send emails.**
         
         INSTRUCTIONS:
         - If the user asks to "Send an email to [email]", call 'send_email_tool' immediately.
         - If the user provides a vague email request (e.g., "Email John"), check the data for an email address or ask for it.
-        - If the user asks for a Chart/Table, return the specific JSON format.
+        - If the user asks for a Chart/Table, return this specific JSON format:
+        
+        FORMAT FOR CHART:
+        ```json
+        {{ "is_chart": true, "chart_type": "bar", "title": "Tasks by Status", "data": {{ "labels": ["Done", "Pending"], "values": [5, 2] }}, "summary": "Here is the chart." }}
+        ```
         """
 
         messages = [
@@ -206,7 +244,7 @@ def chat(request: PromptRequest):
         print("🤖 AI Thinking...")
         ai_response = llm_with_tools.invoke(messages)
 
-        # --- CASE A: TOOL CALLS (Update OR Email) ---
+        # --- CASE A: TOOL CALLS ---
         if ai_response.tool_calls:
             print(f"🔧 AI decided to use tools: {len(ai_response.tool_calls)}")
             results = []
@@ -223,7 +261,7 @@ def chat(request: PromptRequest):
                     results.append(f"Error: Tool {tool_name} not found.")
 
             return {
-                "response": " | ".join(results), # Combine outputs if multiple tools used
+                "response": " | ".join(results),
                 "type": "text",
                 "status": "success"
             }
@@ -257,4 +295,4 @@ def chat(request: PromptRequest):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
+    
