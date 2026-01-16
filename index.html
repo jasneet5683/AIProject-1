@@ -135,11 +135,21 @@
                 <label class="form-label">Task Name</label>
                 <input type="text" id="t_name" class="form-input" placeholder="e.g. Design Homepage">
             </div>
+  <!-- NEW: Client Input -->
+    <div class="form-group">
+        <label class="form-label">Client Name</label>
+        <select id="t_client" class="form-input"> 
+            <option value="Batelco">Batelco</option>
+                    <option value="Etisalat">Etisalat</option>
+                    <option value="DU UAE">DU UAE</option>
+                    <option value="Not Defined">Not Defined</option>
+                </select>
+    </div>
             
             <!-- Assigned To -->
             <div class="form-group">
                 <label class="form-label">Assigned To</label>
-                <input type="text" id="t_assign" class="form-input" placeholder="e.g. John Doe">
+                <input type="text" id="t_assign" class="form-input" placeholder="e.g. Rahul">
             </div>
 
             <!-- Dates Row -->
@@ -247,6 +257,7 @@
             const start = document.getElementById("t_start").value;
             const end = document.getElementById("t_end").value;
             const status = document.getElementById("t_status").value;
+            const client = document.getElementById("t_client").value;
 
             // 2. Validate
             if (!name || !start) {
@@ -255,7 +266,7 @@
             }
 
             closeModal();
-            addMessage(`🛠 Adding task "${name}"...`, "user-message");
+            addMessage(`🛠 Adding task "${name}" for client "${client || 'Unknown'}"...`, "user-message");
 
             // 3. Send to Backend (MATCHING PYTHON MODELS)
             fetch(`${API_URL}/api/add-task`, {
@@ -266,7 +277,8 @@
                     assigned_to: assign,
                     start_date: start,
                     end_date: end,
-                    status: status
+                    status: status,
+                    client: client
                 })
             })
             .then(r => {
@@ -277,6 +289,7 @@
                 addMessage("✅ " + data.message, "ai-message");
                 // Clear form
                 document.getElementById("t_name").value = "";
+                document.getElementById("t_client").value = "";
                 document.getElementById("t_assign").value = "";
             })
             .catch(e => {
@@ -390,5 +403,6 @@
     </script>
 </body>
 </html>
+
 
 
