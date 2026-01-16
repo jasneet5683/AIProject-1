@@ -1,8 +1,9 @@
 import json
 import os
-import smtplib
+import requests
+# import smtplib
 import pandas as pd
-from email.message import EmailMessage
+# from email.message import EmailMessage
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -92,31 +93,40 @@ def load_data_global():
         print(f"❌ Error processing data: {str(e)}")
         document_loaded = False
 
-# --- 3. HELPER: EMAIL SENDER (UPDATED FOR RENDER) ---
+# --- 3. HELPER: EMAIL SENDER (VIA API - WORKS ON RENDER) ---
 def internal_send_email(to_email, subject, body):
+    api_key = os.getenv("BREVO_API_KEY")
+    sender_email = os.getenv("SENDER_EMAIL")
+    sender_name = os.getenv("SENDER_NAME")
+
+    if not api_key:
+        return {"message": "❌ Missing BREVO_API_KEY in .env", "status": "error"}
+
+    url = "https://api.brevo.com/v3/smtp/email"
+    
+    payload = {
+        "sender": {"name": sender_name, "email": sender_email},
+        "to": [{"email": to_email}],
+        "subject": subject,
+        "htmlContent": f"<p>{body}</p>"
+    }
+    
+    headers = {
+        "accept": "application/json",
+        "api-key": api_key,
+        "content-type": "application/json"
+    }
+
     try:
-        if not email_sender or not email_password:
-            return {"message": "❌ Email credentials missing in .env", "status": "error"}
-
-        msg = EmailMessage()
-        msg.set_content(body)
-        msg['Subject'] = subject
-        msg['From'] = email_sender
-        msg['To'] = to_email
-
-        # ---------------------------------------------------------
-        # FIX: Use Port 587 (STARTTLS) instead of 465 (SSL)
-        # ---------------------------------------------------------
-        with smtplib.SMTP('smtp.gmail.com', 587) as smtp:
-            smtp.ehlo()        # Identify ourselves to the server
-            smtp.starttls()    # Encrypt the connection
-            smtp.ehlo()        # Re-identify as an encrypted connection
-            smtp.login(email_sender, email_password)
-            smtp.send_message(msg)
+        response = requests.post(url, json=payload, headers=headers)
         
-        return {"message": f"✅ Email sent to {to_email} successfully!", "status": "success"}
+        if response.status_code == 201:
+            return {"message": f"✅ Email sent to {to_email} successfully!", "status": "success"}
+        else:
+            return {"message": f"❌ Failed: {response.text}", "status": "error"}
+            
     except Exception as e:
-        return {"message": f"❌ Error sending email: {str(e)}", "status": "error"}
+        return {"message": f"❌ Error: {str(e)}", "status": "error"}
 
 # --- 4. HELPER: UPDATE TASK ---
 def internal_update_task(task_name, field, value):
@@ -301,4 +311,5 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
     
+
 
