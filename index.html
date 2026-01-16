@@ -340,24 +340,55 @@
 
 
         function renderChart(data) {
-            const box = document.getElementById("chatBox");
-            const div = document.createElement("div"); div.className = "chart-container";
-            const cvs = document.createElement("canvas"); cvs.id = "c-" + Date.now();
-            cvs.style.maxHeight = "300px";
-            div.appendChild(cvs); box.appendChild(div); box.scrollTop = box.scrollHeight;
-            new Chart(document.getElementById(cvs.id), {
-                type: data.chart_type,
-                data: {
-                    labels: data.data.labels,
-                    datasets: [{
-                        label: data.title,
-                        data: data.data.values,
-                        backgroundColor: '#667eea'
-                    }]
-                }
-            });
+    // 1. Safety Check
+    if (!data || !data.data || !data.data.labels || !data.data.values) {
+        addMessage("⚠️ Chart data is incomplete.", "ai-message");
+        return;
+    }
+
+    const box = document.getElementById("chatBox");
+    const div = document.createElement("div"); 
+    div.className = "chart-container";
+    
+    // Create a unique ID for the canvas
+    const canvasId = "c-" + Date.now();
+    const cvs = document.createElement("canvas"); 
+    cvs.id = canvasId;
+    cvs.style.maxHeight = "300px"; // Prevents giant charts
+    
+    div.appendChild(cvs); 
+    box.appendChild(div); 
+    box.scrollTop = box.scrollHeight;
+
+    // 2. Define Colors (So Pie charts aren't just one color)
+    const backgroundColors = [
+        '#667eea', '#764ba2', '#28a745', '#dc3545', 
+        '#ffc107', '#17a2b8', '#fd7e14', '#6c757d'
+    ];
+
+    // 3. Render Chart.js
+    new Chart(document.getElementById(canvasId), {
+        type: data.chart_type || 'bar', // Default to bar if undefined
+        data: {
+            labels: data.data.labels,
+            datasets: [{
+                label: data.title,
+                data: data.data.values,
+                backgroundColor: backgroundColors.slice(0, data.data.values.length),
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: { beginAtZero: true } // Ensures bars start at 0
+            }
         }
+    });
+}
     </script>
 </body>
 </html>
+
 
