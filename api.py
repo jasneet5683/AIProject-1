@@ -132,7 +132,7 @@ def generate_chart_base64():
         
         # Ensure 'Status' column exists (flexible check)
         # If your column is named differently (e.g., 'Project Status'), update it here.
-        if 'Status' not in df.columns:
+        if 'status' not in df.columns:
             print("⚠️ Chart Error: 'Status' column not found.")
             return None
 
@@ -140,7 +140,7 @@ def generate_chart_base64():
         plt.clf() # Clear previous figures
         plt.figure(figsize=(8, 5))
         
-        counts = df['Status'].value_counts()
+        counts = df['status'].value_counts()
         
         # Plot with some nice colors
         counts.plot(kind='bar', color=['#667eea', '#764ba2', '#28a745'])
@@ -456,6 +456,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
     
+
 
 
 
