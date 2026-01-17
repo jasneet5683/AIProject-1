@@ -75,6 +75,7 @@ def get_google_sheet():
         print(f"❌ Connection Error: {e}")
         return None
 
+
 # --- 2. HELPER: LOAD DATA (Fixes 'Sheet is Empty') ---
 def load_data_global():
     global excel_text_context, document_loaded
@@ -108,42 +109,70 @@ def load_data_global():
         print(f"❌ Error processing data: {str(e)}")
         document_loaded = False
 
+# ---- Helper to return Data frame from google sheet
+  def get_sheet_df():
+    sheet = get_google_sheet()
+    if not sheet:
+        return pd.DataFrame()
+
+    data = sheet.get_all_records()
+    if not data:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(data)
+    df.fillna("N/A", inplace=True)
+
+    # Convert date-like columns to string safely
+    for col in df.columns:
+        if "date" in col.lower():
+            df[col] = df[col].astype(str)
+
+    return df
+
 # Helper for Chart Genertor function
-def generate_chart_base64(df):
+
+def generate_chart_base64():
     try:
-        df = load_data_global() 
-        
+        df = get_sheet_df()
         if df.empty:
+            print("⚠️ No data available for chart.")
             return None
-        # 1. Clear any existing plots
+
+        # Try to find a "Status" column flexibly
+        status_col = next((c for c in df.columns if "status" in c.lower()), None)
+        if not status_col:
+            print("⚠️ No Status column found in sheet.")
+            return None
+
+        counts = df[status_col].astype(str).value_counts()
+
+        # Clear and create plot
         plt.clf()
-        
-        # 2. Create the plot (e.g., Tasks per Client or Status)
-        # You can change 'Status' to 'Client' if you prefer
-        counts = df['Status'].value_counts()
-        
         plt.figure(figsize=(8, 5))
-        counts.plot(kind='bar', color='#667eea')
-        plt.title('Project Status Overview')
-        plt.xlabel('Status')
-        plt.ylabel('Count')
+        counts.plot(kind="bar", color="#667eea")
+        plt.title("Project Status Overview")
+        plt.xlabel(status_col)
+        plt.ylabel("Count")
+        plt.xticks(rotation=45)
         plt.tight_layout()
-        
-        # 3. Save to a memory buffer (BytesIO)
+
+        # Save to memory buffer
         buf = io.BytesIO()
-        plt.savefig(buf, format='png')
+        plt.savefig(buf, format="png", bbox_inches="tight")
         buf.seek(0)
-        
-        # 4. Convert to Base64 String
-        img_str = base64.b64encode(buf.read()).decode('utf-8')
-        
-        # 5. Cleanup
+
+        # Convert to base64
+        img_str = base64.b64encode(buf.read()).decode("utf-8")
+
         plt.close()
-        
+        buf.close()
+
         return img_str
+
     except Exception as e:
         print(f"Chart generation failed: {e}")
         return None
+
 
 # --- 3. HELPER: EMAIL SENDER (UPDATED FOR RENDER) debug ---
 def internal_send_email(to_email, subject, body, chart_base64=None):
@@ -432,6 +461,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
     
+
 
 
 
