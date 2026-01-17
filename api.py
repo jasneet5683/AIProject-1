@@ -433,10 +433,6 @@ def chat(request: PromptRequest):
         - If the user says "Send email with a TABLE", call 'send_email_tool' with attachment_type='table'.
         - If the user says "Send email", use attachment_type='none'.
         - Do NOT call the tool twice.
-        
-        FORMAT FOR DISPLAY (Only if NOT sending email):
-        [... Keep your existing JSON formats for displaying in chat here ...]
-        """
 
         FORMAT FOR CHART:
         ```json
@@ -521,6 +517,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
     
+
 
 
 
