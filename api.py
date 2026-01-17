@@ -301,7 +301,7 @@ def send_email_tool(to_email: str, subject: str, body: str):
     """
     print(f"📧 Tool Triggered: Sending email to {to_email}...")
 # 1. Generate the chart strictly inside the tool
-    chart_image = generate_chart_base64(df)
+    chart_image = generate_chart_base64()
  # 2. Pass the chart to the internal sender
     result = internal_send_email(to_email, subject, body, chart_base64=chart_image)
     
@@ -432,6 +432,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
     
+
 
 
 
