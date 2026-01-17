@@ -416,8 +416,8 @@ def chat(request: PromptRequest):
         )
         llm_with_tools = llm.bind_tools(tools)
 
-        # UPDATED SYSTEM MESSAGE TO INCLUDE TABLE FORMAT
-                system_msg = f"""
+               # UPDATED SYSTEM MESSAGE (Corrected Indentation & Structure)
+        system_msg = f"""
         You are an advanced Project Manager Agent.
         
         CURRENT DATA CONTEXT:
@@ -433,13 +433,13 @@ def chat(request: PromptRequest):
         - If the user says "Send email with a TABLE", call 'send_email_tool' with attachment_type='table'.
         - If the user says "Send email", use attachment_type='none'.
         - Do NOT call the tool twice.
-
-        FORMAT FOR CHART:
+        
+        FORMAT FOR CHART (For Chat Display Only):
         ```json
         {{ "is_chart": true, "chart_type": "bar", "title": "Tasks by Status", "data": {{ "labels": ["Done", "Pending"], "values": [5, 2] }}, "summary": "Here is the chart." }}
         ```
 
-        FORMAT FOR TABLE:
+        FORMAT FOR TABLE (For Chat Display Only):
         ```json
         {{
             "is_table": true,
@@ -517,6 +517,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
     
+
 
 
 
