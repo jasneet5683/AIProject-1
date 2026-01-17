@@ -109,69 +109,64 @@ def load_data_global():
         print(f"❌ Error processing data: {str(e)}")
         document_loaded = False
 
-# ---- Helper to return Data frame from google sheet
-  def get_sheet_df():
-    sheet = get_google_sheet()
-    if not sheet:
-        return pd.DataFrame()
-
-    data = sheet.get_all_records()
-    if not data:
-        return pd.DataFrame()
-
-    df = pd.DataFrame(data)
-    df.fillna("N/A", inplace=True)
-
-    # Convert date-like columns to string safely
-    for col in df.columns:
-        if "date" in col.lower():
-            df[col] = df[col].astype(str)
-
-    return df
-
-# Helper for Chart Genertor function
-
+# Helper for Chart Generator function
 def generate_chart_base64():
+    """
+    Generates a chart based on current Google Sheet data.
+    No arguments required - fetches data internally.
+    """
     try:
-        df = get_sheet_df()
-        if df.empty:
-            print("⚠️ No data available for chart.")
+        # 1. Fetch fresh data directly
+        sheet = get_google_sheet()
+        if not sheet:
+            print("❌ Chart Error: Could not connect to sheet.")
             return None
 
-        # Try to find a "Status" column flexibly
-        status_col = next((c for c in df.columns if "status" in c.lower()), None)
-        if not status_col:
-            print("⚠️ No Status column found in sheet.")
+        data = sheet.get_all_records()
+        if not data:
+            print("⚠️ Chart Error: No data in sheet.")
             return None
 
-        counts = df[status_col].astype(str).value_counts()
+        # 2. Prepare DataFrame
+        df = pd.DataFrame(data)
+        
+        # Ensure 'Status' column exists (flexible check)
+        # If your column is named differently (e.g., 'Project Status'), update it here.
+        if 'Status' not in df.columns:
+            print("⚠️ Chart Error: 'Status' column not found.")
+            return None
 
-        # Clear and create plot
-        plt.clf()
+        # 3. Create the plot
+        plt.clf() # Clear previous figures
         plt.figure(figsize=(8, 5))
-        counts.plot(kind="bar", color="#667eea")
-        plt.title("Project Status Overview")
-        plt.xlabel(status_col)
-        plt.ylabel("Count")
-        plt.xticks(rotation=45)
+        
+        counts = df['Status'].value_counts()
+        
+        # Plot with some nice colors
+        counts.plot(kind='bar', color=['#667eea', '#764ba2', '#28a745'])
+        plt.title('Project Status Overview')
+        plt.xlabel('Status')
+        plt.ylabel('Count')
+        plt.xticks(rotation=45) # Rotate labels if they are long
         plt.tight_layout()
-
-        # Save to memory buffer
+        
+        # 4. Save to memory buffer
         buf = io.BytesIO()
-        plt.savefig(buf, format="png", bbox_inches="tight")
+        plt.savefig(buf, format='png')
         buf.seek(0)
-
-        # Convert to base64
-        img_str = base64.b64encode(buf.read()).decode("utf-8")
-
+        
+        # 5. Convert to Base64 String
+        img_str = base64.b64encode(buf.read()).decode('utf-8')
+        
+        # 6. Cleanup
         plt.close()
-        buf.close()
-
+        
         return img_str
 
     except Exception as e:
-        print(f"Chart generation failed: {e}")
+        print(f"❌ Chart generation failed: {e}")
         return None
+
 
 
 # --- 3. HELPER: EMAIL SENDER (UPDATED FOR RENDER) debug ---
@@ -461,6 +456,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
     
+
 
 
 
