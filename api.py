@@ -167,24 +167,73 @@ def generate_chart_base64():
         print(f"❌ Chart generation failed: {e}")
         return None
 
+#---- Table Generator Function
+def generate_table_base64():
+    """
+    Generates a table image (PNG) based on current Google Sheet data.
+    """
+    try:
+        sheet = get_google_sheet()
+        if not sheet:
+            return None
+
+        data = sheet.get_all_records()
+        if not data:
+            return None
+
+        df = pd.DataFrame(data)
+        
+        # Create figure for the table
+        plt.clf()
+        fig, ax = plt.subplots(figsize=(10, 6)) # Adjust size as needed
+        ax.axis('tight')
+        ax.axis('off')
+        
+        # Create the table
+        table = ax.table(
+            cellText=df.values,
+            colLabels=df.columns,
+            cellLoc='center',
+            loc='center',
+            colWidths=[0.15] * len(df.columns)
+        )
+        
+        # Style the table
+        table.auto_set_font_size(False)
+        table.set_fontsize(10)
+        table.scale(1, 1.5)
+        
+        # Add a nice header color
+        for (i, j), cell in table.get_celld().items():
+            if i == 0:
+                cell.set_facecolor('#667eea')
+                cell.set_text_props(weight='bold', color='white')
+
+        # Save to buffer
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', bbox_inches='tight', dpi=100)
+        buf.seek(0)
+        
+        img_str = base64.b64encode(buf.read()).decode('utf-8')
+        plt.close()
+        
+        return img_str
+
+    except Exception as e:
+        print(f"❌ Table generation failed: {e}")
+        return None
 
 
-# --- 3. HELPER: EMAIL SENDER (UPDATED FOR RENDER) debug ---
-def internal_send_email(to_email, subject, body, chart_base64=None):
+
+# --- 3. HELPER: EMAIL SENDER (UPDATED FOR RENDER) 
+
+def internal_send_email(to_email, subject, body, attachment_base64=None, attachment_type="none"):
     api_key = os.getenv("BREVO_API_KEY")
     sender_email = os.getenv("SENDER_EMAIL")
     sender_name = os.getenv("SENDER_NAME", "AI Assistant")
 
-    # --- DEBUGGING START ---
-  #  print(f"DEBUG: Sender: {sender_email}")
-  #  if api_key:
-  #      print(f"DEBUG: API Key loaded? Yes (Starts with: {api_key[:5]}...)")
-  #  else:
-  #      print("DEBUG: API Key loaded? NO")
-    # --- DEBUGGING END ---
-
     if not api_key:
-        return {"message": "❌ Missing BREVO_API_KEY in environment", "status": "error"}
+        return {"message": "❌ Missing BREVO_API_KEY", "status": "error"}
 
     url = "https://api.brevo.com/v3/smtp/email"
     headers = {
@@ -197,28 +246,30 @@ def internal_send_email(to_email, subject, body, chart_base64=None):
         "sender": {"name": sender_name, "email": sender_email},
         "to": [{"email": to_email}],
         "subject": subject,
-        "htmlContent": f"<p>{body}</p><p>Please find the project status chart attached.</p>"
+        "htmlContent": f"<p>{body}</p>"
     }
     
-    # IF we have a chart, add it as an attachment
-    if chart_base64:
+    # Logic to handle different attachment names
+    if attachment_base64:
+        filename = "project_status.png"
+        if attachment_type == "table":
+            filename = "status_table.png"
+        elif attachment_type == "chart":
+            filename = "status_chart.png"
+            
         payload["attachment"] = [
             {
-                "content": chart_base64,
-                "name": "status_chart.png"
+                "content": attachment_base64,
+                "name": filename
             }
         ]
 
     try:
         response = requests.post(url, json=payload, headers=headers)
-        
         if response.status_code == 201:
             return {"message": f"✅ Email sent to {to_email} successfully!", "status": "success"}
         else:
-            # Print the full error from Brevo for debugging
-            print(f"BREVO ERROR: {response.text}")
             return {"message": f"❌ Failed: {response.text}", "status": "error"}
-            
     except Exception as e:
         return {"message": f"❌ Error: {str(e)}", "status": "error"}
 
@@ -317,20 +368,28 @@ def update_sheet_tool(task_name: str, field: str, value: str):
     return result["message"]
 
 @tool
-def send_email_tool(to_email: str, subject: str, body: str):
+def send_email_tool(to_email: str, subject: str, body: str, attachment_type: str = "none"):
     """
-    Sends an email using the connected SMTP server.
-    You must use this tool if the user asks to 'send an email', 'notify', or 'message' someone via email.
-    Do not ask for confirmation, just send it.
+    Sends an email.
+    IMPORTANT: 'attachment_type' must be one of: 'chart', 'table', or 'none'.
+    - Use 'chart' if user asks for a visualization or graph.
+    - Use 'table' if user asks for a list, grid, or table in the email.
+    - Use 'none' for standard text emails.
     """
-    print(f"📧 Tool Triggered: Sending email to {to_email}...")
-# 1. Generate the chart strictly inside the tool
-    chart_image = generate_chart_base64()
- # 2. Pass the chart to the internal sender
-    result = internal_send_email(to_email, subject, body, chart_base64=chart_image)
+    print(f"📧 Tool Triggered: Sending email to {to_email} with {attachment_type}...")
     
-    #result = internal_send_email(to_email, subject, body)
+    attachment_data = None
+    
+    # Decide what to generate based on the AI's request
+    if attachment_type.lower() == "chart":
+        attachment_data = generate_chart_base64()
+    elif attachment_type.lower() == "table":
+        attachment_data = generate_table_base64()
+    
+    # Send the email once
+    result = internal_send_email(to_email, subject, body, attachment_data, attachment_type)
     return result["message"]
+
 
 # --- 8. CHAT AGENT (UPDATED) ---
 
@@ -358,21 +417,27 @@ def chat(request: PromptRequest):
         llm_with_tools = llm.bind_tools(tools)
 
         # UPDATED SYSTEM MESSAGE TO INCLUDE TABLE FORMAT
-        system_msg = f"""
-        You are an advanced Project Manager Agent with REAL-WORLD CAPABILITIES.
+                system_msg = f"""
+        You are an advanced Project Manager Agent.
         
         CURRENT DATA CONTEXT:
         {excel_text_context}
         
-        YOUR TOOLS (You MUST use them when requested):
-        1. 'update_sheet_tool': Use this to change data in the sheet.
-        2. 'send_email_tool': Use this to send actual emails. **You are authorized to send emails.**
+        YOUR TOOLS:
+        1. 'update_sheet_tool': Modify data.
+        2. 'send_email_tool': Send emails. 
+           - PARAMETER 'attachment_type': Set this to 'chart', 'table', or 'none' strictly based on user request.
         
         INSTRUCTIONS:
-        - If the user asks to "Send an email to [email]", call 'send_email_tool' immediately.
-        - If the user provides a vague email request (e.g., "Email John"), check the data for an email address or ask for it.
-        - If the user asks for a Chart or Table, return the specific JSON format below. Do not return Markdown tables.
+        - If the user says "Send email with a CHART", call 'send_email_tool' with attachment_type='chart'.
+        - If the user says "Send email with a TABLE", call 'send_email_tool' with attachment_type='table'.
+        - If the user says "Send email", use attachment_type='none'.
+        - Do NOT call the tool twice.
         
+        FORMAT FOR DISPLAY (Only if NOT sending email):
+        [... Keep your existing JSON formats for displaying in chat here ...]
+        """
+
         FORMAT FOR CHART:
         ```json
         {{ "is_chart": true, "chart_type": "bar", "title": "Tasks by Status", "data": {{ "labels": ["Done", "Pending"], "values": [5, 2] }}, "summary": "Here is the chart." }}
@@ -456,6 +521,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
     
+
 
 
 
