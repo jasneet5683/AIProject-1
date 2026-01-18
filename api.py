@@ -4,6 +4,7 @@ import requests
 # import smtplib
 import pandas as pd
 # from email.message import EmailMessage
+from typing import Optional 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -58,6 +59,8 @@ class TaskRequest(BaseModel):
     end_date: str
     status: str
     client: str
+    #new optional field for sending email to notify task addition
+    notify_email: Optional[str] = None 
 
 # --- 1. HELPER: CONNECT TO GOOGLE SHEETS ---
 def get_google_sheet():
@@ -223,6 +226,69 @@ def generate_table_base64():
         print(f"❌ Table generation failed: {e}")
         return None
 
+#--------- Helper for task creation function
+def send_task_creation_email(to_email, task_name, assigned_to, client, due_date):
+    """
+    Sends a specific email notification when a new task is added.
+    """
+    api_key = os.getenv("BREVO_API_KEY")
+    sender_email = os.getenv("SENDER_EMAIL")
+    sender_name = os.getenv("SENDER_NAME", "AI Assistant")
+
+    if not api_key:
+        print("❌ Error: Missing BREVO_API_KEY")
+        return False
+
+    url = "https://api.brevo.com/v3/smtp/email"
+    headers = {
+        "accept": "application/json",
+        "api-key": api_key,
+        "content-type": "application/json"
+    }
+
+    # Professional HTML Email Template
+    html_content = f"""
+    <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+        <h2 style="color: #667eea;">🚀 New Task Assigned</h2>
+        <p>Hello,</p>
+        <p>A new task has been added to the tracker and assigned to <strong>{assigned_to}</strong>.</p>
+        <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
+            <tr>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Task Name:</strong></td>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd;">{task_name}</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Client:</strong></td>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd;">{client}</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd;"><strong>Due Date:</strong></td>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd;">{due_date}</td>
+            </tr>
+        </table>
+        <p style="margin-top: 20px; color: #888; font-size: 12px;">This is an automated message from your AI Task Manager.</p>
+    </div>
+    """
+
+    payload = {
+        "sender": {"name": sender_name, "email": sender_email},
+        "to": [{"email": to_email}],
+        "subject": f"New Task Assigned: {task_name}",
+        "htmlContent": html_content
+    }
+
+    try:
+        response = requests.post(url, json=payload, headers=headers)
+        if response.status_code == 201:
+            print(f"✅ Notification sent to {to_email}")
+            return True
+        else:
+            print(f"❌ Email Failed: {response.text}")
+            return False
+    except Exception as e:
+        print(f"❌ Email Error: {str(e)}")
+        return False
+
 
 
 # --- 3. HELPER: EMAIL SENDER (UPDATED FOR RENDER) 
@@ -350,10 +416,27 @@ def add_task(task: TaskRequest):
         # Refresh the global data cache so the AI knows about the new task
         load_data_global()
         
-        return {"message": f"Task '{task.task_name}' added for {task.client} successfully!", "status": "success"}
+         # --- NEW: EMAIL LOGIC ---
+        email_status = ""
+        if task.notify_email:
+            # Only try to send if the email field is not empty
+            sent = send_task_creation_email(
+                to_email=task.notify_email,
+                task_name=task.task_name,
+                assigned_to=task.assigned_to,
+                client=task.client,
+                due_date=task.end_date
+            )
+            if sent:
+                email_status = " Email notification sent!"
+            else:
+                email_status = " (Email notification failed to send)."
+        return {
+            "message": f"Task '{task.task_name}' added successfully!{email_status}", 
+            "status": "success"
+        }
     except Exception as e:
         return {"message": f"Failed to add task: {str(e)}", "status": "error"}
-
 
 # --- 7. LANGCHAIN TOOLS ---
 
@@ -517,6 +600,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
     
+
 
 
 
