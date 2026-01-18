@@ -174,7 +174,14 @@
                     <option value="On Hold">On Hold</option>
                 </select>
             </div>
-            
+ <!----- Email ---->
+          <div class="form-group">
+    <label for="notifyEmail">Notification Email (Optional)</label>
+    <input type="email" id="notifyEmail" placeholder="jasneet.singh@airlinq.com">
+   <small style="color: #666; font-size: 11px; margin-top: 4px; display:block;">
+       📧 If provided, an email will be sent immediately.
+    </small>
+</div>
             <!-- Buttons -->
             <div class="modal-buttons" style="display:flex; gap:10px; margin-top:20px;">
                 <button onclick="submitTask()" style="flex:1; background:#28a745;">Save</button>
@@ -258,6 +265,8 @@
             const end = document.getElementById("t_end").value;
             const status = document.getElementById("t_status").value;
             const client = document.getElementById("t_client").value;
+            // 2. NEW: Get the optional email value
+            const notifyEmail = document.getElementById("notifyEmail").value;
 
             // 2. Validate
             if (!name || !start) {
@@ -278,7 +287,8 @@
                     start_date: start,
                     end_date: end,
                     status: status,
-                    client: client
+                    client: client,
+                    notify_email: notifyEmail
                 })
             })
             .then(r => {
@@ -403,6 +413,7 @@
     </script>
 </body>
 </html>
+
 
 
 
