@@ -112,6 +112,26 @@ def load_data_global():
         print(f"❌ Error processing data: {str(e)}")
         document_loaded = False
 
+#..............get email for assignees
+def get_email_for_assignee(assignee_name):
+    """
+    Finds the email for a given name using the Team Directory.
+    """
+    # 1. Fetch the directory
+    team_map = get_team_directory()
+    
+    # 2. Look up the name (case insensitive)
+    clean_name = assignee_name.strip().lower()
+    
+    email = team_map.get(clean_name)
+    
+    if email:
+        return email
+    else:
+        print(f"❌ No email found for user: {assignee_name}")
+        return None
+
+
 # Helper for Chart Generator function
 def generate_chart_base64():
     """
@@ -637,6 +657,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
     
+
 
 
 
