@@ -514,7 +514,7 @@ async def startup_event():
     # --- UNCOMMENT ONE OF THESE ---
     
     # OPTION A: Testing Mode (Runs every 60 seconds)
-     scheduler.add_job(check_deadlines_and_notify, 'interval', seconds=60)
+    scheduler.add_job(check_deadlines_and_notify, 'interval', seconds=60)
     
     # OPTION B: Production Mode (Runs every day at 09:00 AM UTC)
     #scheduler.add_job(check_deadlines_and_notify, 'cron', hour=9, minute=0)
@@ -750,6 +750,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
     
+
 
 
 
