@@ -289,6 +289,37 @@ def send_task_creation_email(to_email, task_name, assigned_to, client, due_date)
         print(f"❌ Email Error: {str(e)}")
         return False
 
+# --- HELPER: FETCH TEAM DIRECTORY ---
+def get_team_directory():
+    """
+    Reads the 'Team' tab from Google Sheets and returns a dictionary.
+    Format: {'Rahul': 'rahul@example.com', 'Sarah': 'sarah@test.com'}
+    """
+    try:
+        json_creds = os.getenv("GOOGLE_CREDS")
+        if not json_creds:
+            return {}
+            
+        creds_dict = json.loads(json_creds)
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+        client = gspread.authorize(creds)
+        
+        # Open the specific 'Team' worksheet
+        sheet = client.open(SHEET_NAME).worksheet("Team") 
+        data = sheet.get_all_records()
+        
+        # Create a dictionary mapping Name -> Email
+        # We use lower() to make it case-insensitive matching later
+        team_map = {row['Name'].strip().lower(): row['Email'].strip() for row in data}
+        
+        print(f"✅ Team Directory Loaded: {len(team_map)} members found.")
+        return team_map
+
+    except Exception as e:
+        print(f"⚠️ Could not load Team Directory: {e}")
+        return {}
+
 
 
 # --- 3. HELPER: EMAIL SENDER (UPDATED FOR RENDER) 
@@ -389,6 +420,12 @@ async def startup_event():
 @app.get("/")
 def read_root():
     return {"status": "active", "message": "Backend is running. Data loaded: " + str(document_loaded)}
+
+#End Point to test Team
+@app.get("/api/test-team")
+def test_team():
+    directory = get_team_directory()
+    return {"message": "Directory loaded", "data": directory}
 
 @app.get("/api/status")
 def get_status():
@@ -600,6 +637,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
     
+
 
 
 
