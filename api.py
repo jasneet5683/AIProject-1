@@ -23,6 +23,10 @@ matplotlib.use('Agg') # Required for Render/Server usage
 import matplotlib.pyplot as plt
 import io
 import base64
+# Add these imports for app shcheduler
+from apscheduler.schedulers.background import BackgroundScheduler
+from datetime import datetime, timedelta
+
 
 # Load environment variables
 load_dotenv()
@@ -427,12 +431,101 @@ def internal_update_task(task_name, field, value):
     except Exception as e:
         return {"message": f"Error updating: {str(e)}", "status": "error"}
 
+# --- AUTOMATED SCHEDULER LOGIC ---
 
-# --- 5. APP STARTUP EVENT ---
+def check_deadlines_and_notify():
+    """
+    1. Reads all tasks.
+    2. Checks if 'End Date' is 2 days from now.
+    3. Finds Assignee email from Team Directory.
+    4. Sends reminder.
+    """
+    print("⏰ Scheduler running: Checking for upcoming deadlines...")
+    
+    sheet = get_google_sheet()
+    if not sheet: 
+        print("❌ Scheduler Error: Can't connect to sheet.")
+        return
+
+    # 1. Fetch Data
+    tasks = sheet.get_all_records()
+    team_directory = get_team_directory() # Uses the function we made in the previous step
+    
+    today = datetime.now().date()
+    
+    for row in tasks:
+        task_name = row.get("Task Name") or row.get("task_name")
+        assigned_to = row.get("Assigned To") or row.get("assigned_to")
+        status = row.get("Status") or row.get("status")
+        end_date_str = row.get("End Date") or row.get("end_date")
+        
+        # Skip if already done or data is missing
+        if str(status).lower() in ["completed", "done", "cancelled"] or not end_date_str:
+            continue
+
+        try:
+            # 2. Parse Date (Assumes format YYYY-MM-DD)
+            # If your sheet uses DD-MM-YYYY, change this to "%d-%m-%Y"
+            due_date = datetime.strptime(str(end_date_str), "%Y-%m-%d").date()
+            
+            # Calculate days remaining
+            days_left = (due_date - today).days
+            
+            # 3. TRIGGER: If due in exactly 2 days (or overdue)
+            if days_left == 2:
+                print(f"⚠️ Task '{task_name}' is due in 2 days!")
+                
+                # 4. Find Email
+                assignee_email = team_directory.get(str(assigned_to).strip().lower())
+                
+                if assignee_email:
+                    # 5. Send Email
+                    subject = f"🔔 Reminder: '{task_name}' is due soon"
+                    body = f"""
+                    <h3>Deadline Approaching</h3>
+                    <p>Hi {assigned_to},</p>
+                    <p>This is a gentle reminder that the task <strong>{task_name}</strong> is due on <strong>{end_date_str}</strong>.</p>
+                    <p>Please update the status if completed.</p>
+                    """
+                    # Reuse your existing email sender
+                    internal_send_email(assignee_email, subject, body)
+                    print(f"✅ Reminder sent to {assignee_email}")
+                else:
+                    print(f"⚠️ No email found for user: {assigned_to}")
+                    
+        except ValueError:
+            # Date format was likely wrong in the sheet
+            continue
+
+
+#StartUp Event
+# Create the scheduler instance
+scheduler = BackgroundScheduler()
+
 @app.on_event("startup")
 async def startup_event():
-    # This runs when Render starts the server
+    # 1. Load Data for AI
     load_data_global()
+    
+    # 2. Start the Scheduler
+    # For TESTING: Use 'interval' and seconds=60 to see it work immediately
+    # For PRODUCTION: Use 'cron' to run once a day (e.g., at 9 AM)
+    
+    # --- UNCOMMENT ONE OF THESE ---
+    
+    # OPTION A: Testing Mode (Runs every 60 seconds)
+    # scheduler.add_job(check_deadlines_and_notify, 'interval', seconds=60)
+    
+    # OPTION B: Production Mode (Runs every day at 09:00 AM UTC)
+    scheduler.add_job(check_deadlines_and_notify, 'cron', hour=9, minute=0)
+    
+    scheduler.start()
+    print("🚀 Background Scheduler Started")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    scheduler.shutdown()
 
 # --- 6. API ENDPOINTS ---
 
@@ -657,6 +750,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
     
+
 
 
 
