@@ -517,10 +517,10 @@ async def startup_event():
     # --- UNCOMMENT ONE OF THESE ---
     
     # OPTION A: Testing Mode (Runs every 60 seconds)
-    scheduler.add_job(check_deadlines_and_notify, 'interval', seconds=60)
+    # scheduler.add_job(check_deadlines_and_notify, 'interval', seconds=60)
     
     # OPTION B: Production Mode (Runs every day at 09:00 AM UTC)
-    #scheduler.add_job(check_deadlines_and_notify, 'cron', hour=9, minute=0)
+    scheduler.add_job(check_deadlines_and_notify, 'cron', hour=9, minute=0)
     
     scheduler.start()
     print("🚀 Background Scheduler Started")
@@ -538,10 +538,10 @@ def read_root():
     return {"status": "active", "message": "Backend is running. Data loaded: " + str(document_loaded)}
 
 #End Point to test Team
-@app.get("/api/test-team")
-def test_team():
-    directory = get_team_directory()
-    return {"message": "Directory loaded", "data": directory}
+# @app.get("/api/test-team")
+# def test_team():
+#    directory = get_team_directory()
+#    return {"message": "Directory loaded", "data": directory}
 
 @app.get("/api/status")
 def get_status():
@@ -637,7 +637,12 @@ def chat(request: PromptRequest):
         # Reload if empty
         if not document_loaded or not excel_text_context:
             load_data_global()
-
+        
+        # 2. Get Current Date
+        # You can add a specific timezone here if needed using pytz, 
+        # but standard datetime is used here for simplicity.
+        current_date = datetime.now().strftime("%Y-%m-%d")
+        
         # Define Tools
         tools = [update_sheet_tool, send_email_tool]
         tool_map = {
@@ -753,6 +758,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
     
+
 
 
 
