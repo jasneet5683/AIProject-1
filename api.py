@@ -434,6 +434,7 @@ def internal_update_task(task_name, field, value):
 # --- AUTOMATED SCHEDULER LOGIC ---
 
 def check_deadlines_and_notify():
+    print("⏰ DEBUG: Scheduler job triggered.")
     """
     1. Reads all tasks.
     2. Checks if 'End Date' is 2 days from now.
@@ -449,10 +450,12 @@ def check_deadlines_and_notify():
 
     # 1. Fetch Data
     tasks = sheet.get_all_records()
+    print(f"📄 DEBUG: Fetched {len(tasks)} tasks from Sheet.")
     team_directory = get_team_directory() # Uses the function we made in the previous step
     
     today = datetime.now().date()
-    
+    print(f"📅 DEBUG: Server date is {today}")
+
     for row in tasks:
         task_name = row.get("Task Name") or row.get("task_name")
         assigned_to = row.get("Assigned To") or row.get("assigned_to")
@@ -750,6 +753,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
     
+
 
 
 
