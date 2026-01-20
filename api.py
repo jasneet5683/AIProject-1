@@ -475,7 +475,7 @@ def check_deadlines_and_notify():
             days_left = (due_date - today).days
             
             # 3. TRIGGER: If due in exactly 2 days (or overdue)
-            if days_left <= 2:
+            if days_left == 2:
                 print(f"⚠️ Task '{task_name}' is due in 2 days!")
                 
                 # 4. Find Email
@@ -753,6 +753,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
     
+
 
 
 
