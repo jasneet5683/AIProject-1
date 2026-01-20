@@ -660,6 +660,7 @@ def chat(request: PromptRequest):
                # UPDATED SYSTEM MESSAGE (Corrected Indentation & Structure)
         system_msg = f"""
         You are an advanced Project Manager Agent.
+        Today's date is {current_date}.
         
         CURRENT DATA CONTEXT:
         {excel_text_context}
@@ -758,6 +759,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
     
+
 
 
 
