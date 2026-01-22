@@ -11,3 +11,9 @@ gspread
 oauth2client
 matplotlib
 apscheduler
+python-multipart
+pydantic 
+openai 
+pydub
+httpx
+gunicorn
