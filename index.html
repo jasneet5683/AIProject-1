@@ -26,7 +26,7 @@
             border-radius: 10px;
             box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
             width: 100%;
-            max-width: 800px; /* Made slightly wider for better table view */
+            max-width: 800px;
             padding: 30px;
             display: flex;
             flex-direction: column;
@@ -79,6 +79,21 @@
         #addTaskBtn { background: #28a745; display: flex; align-items: center; gap: 5px; }
         #addTaskBtn:hover { background: #218838; }
 
+        /* --- RECORDING STYLES --- */
+        #recordBtn { background: #17a2b8; font-size: 16px; }
+        #recordBtn:hover { background: #138496; }
+        
+        /* Animation for when recording is active */
+        .recording {
+            background-color: #dc3545 !important;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); }
+            70% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
+        }
+
         /* --- MODAL STYLES --- */
         .modal-overlay {
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -112,311 +127,11 @@
                 Hi there! 👋<br>
                 I am Live.<br>
                 • Ask me about project status 📈<br>
-                • I can display Charts, Tables and send emails <br>
+                • Use the 🎤 to speak<br>
                 • Or click <b>Add Task</b> to create new entries!
             </div>
         </div>
         
         <div class="input-group">
             <input type="text" id="userInput" placeholder="Ask a question..." disabled onkeypress="if(event.key === 'Enter') sendMessage()">
-            <button id="sendBtn" onclick="sendMessage()" disabled>Send</button>
-            <button id="addTaskBtn" onclick="openModal()" disabled>➕ Add Task</button>
-        </div>
-    </div>
-
-    <!-- NEW FULL FORM MODAL -->
-    <div id="taskModal" class="modal-overlay">
-        <div class="modal-content">
-            <h3 style="margin-bottom:20px; color:#333; border-bottom:1px solid #eee; padding-bottom:10px;">
-                📝 Add New Task
-            </h3>
-            
-            <!-- Task Name -->
-            <div class="form-group">
-                <label class="form-label">Task Name</label>
-                <input type="text" id="t_name" class="form-input" placeholder="e.g. Design Homepage">
-            </div>
-  <!-- NEW: Client Input -->
-    <div class="form-group">
-        <label class="form-label">Client Name</label>
-        <select id="t_client" class="form-input"> 
-            <option value="Batelco">Batelco</option>
-                    <option value="Etisalat">Etisalat</option>
-                    <option value="DU UAE">DU UAE</option>
-                    <option value="Not Defined">Not Defined</option>
-                </select>
-    </div>
-            
-            <!-- Assigned To -->
-            <div class="form-group">
-                <label class="form-label">Assigned To</label>
-                <input type="text" id="t_assign" class="form-input" placeholder="e.g. Rahul">
-            </div>
-
-            <!-- Dates Row -->
-            <div class="row">
-                <div class="form-group" style="flex:1">
-                    <label class="form-label">Start Date</label>
-                    <input type="date" id="t_start" class="form-input">
-                </div>
-                <div class="form-group" style="flex:1">
-                    <label class="form-label">End Date</label>
-                    <input type="date" id="t_end" class="form-input">
-                </div>
-            </div>
-
-            <!-- Status -->
-            <div class="form-group">
-                <label class="form-label">Status</label>
-                <select id="t_status" class="form-input">
-                    <option value="Not Started">Not Started</option>
-                    <option value="In Progress">In Progress</option>
-                    <option value="Completed">Completed</option>
-                    <option value="On Hold">On Hold</option>
-                </select>
-            </div>
- <!----- Email ---->
-          <div class="form-group">
-    <label for="notifyEmail">Notification Email (Optional)</label>
-    <input type="email" id="notifyEmail" placeholder="jasneet.singh@airlinq.com">
-   <small style="color: #666; font-size: 11px; margin-top: 4px; display:block;">
-       📧 If provided, an email will be sent immediately.
-    </small>
-</div>
-            <!-- Buttons -->
-            <div class="modal-buttons" style="display:flex; gap:10px; margin-top:20px;">
-                <button onclick="submitTask()" style="flex:1; background:#28a745;">Save</button>
-                <button onclick="closeModal()" style="flex:1; background:#dc3545;">Cancel</button>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        // REPLACE WITH YOUR RENDER URL
-        const API_URL = "https://aiproject-1-ipxt.onrender.com";
-
-        window.addEventListener("load", checkStatus);
-
-        function checkStatus() {
-            fetch(`${API_URL}/api/status`)
-                .then(r => r.json())
-                .then(d => {
-                    const sb = document.getElementById("statusBar");
-                    if(d.document_loaded) {
-                        sb.className = "status-bar ready"; sb.innerText = "✅ System Ready";
-                        toggleInput(true);
-                    } else {
-                        sb.className = "status-bar error"; sb.innerText = "⚠️ Connected, but Sheet is empty";
-                        toggleInput(true); // Allow input anyway to add tasks
-                    }
-                })
-                .catch(() => {
-                    document.getElementById("statusBar").innerText = "❌ Offline / Backend Error";
-                });
-        }
-
-        function toggleInput(enable) {
-            document.getElementById("userInput").disabled = !enable;
-            document.getElementById("sendBtn").disabled = !enable;
-            document.getElementById("addTaskBtn").disabled = !enable;
-        }
-
-        // --- CHAT LOGIC ---
-        function sendMessage() {
-            const input = document.getElementById("userInput");
-            const txt = input.value.trim();
-            if(!txt) return;
-
-            addMessage(txt, "user-message");
-            input.value = "";
-            toggleInput(false);
-
-            const loadId = addMessage("⏳ Thinking...", "ai-message");
-
-            fetch(`${API_URL}/api/chat`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ prompt: txt })
-            })
-            .then(r => r.json())
-            .then(data => {
-                document.getElementById(loadId).remove();
-                addMessage(data.response, "ai-message");
-                if(data.type === "table") renderTable(data.table_data);
-                if(data.type === "chart") renderChart(data.chart_data);
-            })
-            .catch(e => {
-                document.getElementById(loadId).innerText = "Error: " + e;
-            })
-            .finally(() => {
-                toggleInput(true);
-                input.focus();
-            });
-        }
-
-        // --- MODAL LOGIC ---
-        function openModal() { document.getElementById("taskModal").style.display = "flex"; }
-        function closeModal() { document.getElementById("taskModal").style.display = "none"; }
-
-        function submitTask() {
-            // 1. Get Values
-            const name = document.getElementById("t_name").value;
-            const assign = document.getElementById("t_assign").value;
-            const start = document.getElementById("t_start").value;
-            const end = document.getElementById("t_end").value;
-            const status = document.getElementById("t_status").value;
-            const client = document.getElementById("t_client").value;
-            // 2. NEW: Get the optional email value
-            const notifyEmail = document.getElementById("notifyEmail").value;
-
-            // 2. Validate
-            if (!name || !start) {
-                alert("Please fill in at least Task Name and Start Date.");
-                return;
-            }
-
-            closeModal();
-            addMessage(`🛠 Adding task "${name}" for client "${client || 'Unknown'}"...`, "user-message");
-
-            // 3. Send to Backend (MATCHING PYTHON MODELS)
-            fetch(`${API_URL}/api/add-task`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ 
-                    task_name: name,
-                    assigned_to: assign,
-                    start_date: start,
-                    end_date: end,
-                    status: status,
-                    client: client,
-                    notify_email: notifyEmail
-                })
-            })
-            .then(r => {
-                if(!r.ok) throw new Error("Backend error");
-                return r.json();
-            })
-            .then(data => {
-                addMessage("✅ " + data.message, "ai-message");
-                // Clear form
-                document.getElementById("t_name").value = "";
-                document.getElementById("t_client").value = "";
-                document.getElementById("t_assign").value = "";
-            })
-            .catch(e => {
-                addMessage("❌ Failed to add task.", "ai-message");
-                console.error(e);
-            });
-        }
-
-        // --- RENDER HELPERS ---
-        function addMessage(text, cls) {
-            const div = document.createElement("div");
-            div.className = "message " + cls;
-            div.innerHTML = text.replace(/\n/g, "<br>");
-            div.id = "msg-" + Date.now();
-            const box = document.getElementById("chatBox");
-            box.appendChild(div);
-            box.scrollTop = box.scrollHeight;
-            return div.id;
-        }
-
-        function renderTable(data) {
-    // 1. SAFETY CHECK: Prevents crashes if backend sends empty data
-    if (!data || !data.headers || !data.rows) {
-        console.error("Invalid table data received:", data);
-        addMessage("⚠️ Received incomplete table data.", "ai-message");
-        return;
-    }
-
-    const box = document.getElementById("chatBox");
-    const div = document.createElement("div"); 
-    div.className = "table-container";
-    
-    // 2. BUILD TABLE HTML
-    let html = `<table class="chat-table">
-        <thead><tr>`;
-    
-    // Fixed: Changed 'data.columns' to 'data.headers'
-    data.headers.forEach(header => {
-        html += `<th>${header}</th>`;
-    });
-    
-    html += `</tr></thead><tbody>`;
-    
-    // Render Rows
-    data.rows.forEach(row => {
-        html += `<tr>`;
-        row.forEach(cell => {
-            // Added check for null values to keep the table clean
-            html += `<td>${cell || ''}</td>`;
-        });
-        html += `</tr>`;
-    });
-    
-    html += `</tbody></table>`;
-    
-    // 3. INJECT INTO CHAT
-    div.innerHTML = html;
-    box.appendChild(div);
-    box.scrollTop = box.scrollHeight;
-}
-
-
-        function renderChart(data) {
-    // 1. Safety Check
-    if (!data || !data.data || !data.data.labels || !data.data.values) {
-        addMessage("⚠️ Chart data is incomplete.", "ai-message");
-        return;
-    }
-
-    const box = document.getElementById("chatBox");
-    const div = document.createElement("div"); 
-    div.className = "chart-container";
-    
-    // Create a unique ID for the canvas
-    const canvasId = "c-" + Date.now();
-    const cvs = document.createElement("canvas"); 
-    cvs.id = canvasId;
-    cvs.style.maxHeight = "300px"; // Prevents giant charts
-    
-    div.appendChild(cvs); 
-    box.appendChild(div); 
-    box.scrollTop = box.scrollHeight;
-
-    // 2. Define Colors (So Pie charts aren't just one color)
-    const backgroundColors = [
-        '#667eea', '#764ba2', '#28a745', '#dc3545', 
-        '#ffc107', '#17a2b8', '#fd7e14', '#6c757d'
-    ];
-
-    // 3. Render Chart.js
-    new Chart(document.getElementById(canvasId), {
-        type: data.chart_type || 'bar', // Default to bar if undefined
-        data: {
-            labels: data.data.labels,
-            datasets: [{
-                label: data.title,
-                data: data.data.values,
-                backgroundColor: backgroundColors.slice(0, data.data.values.length),
-                borderWidth: 1
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                y: { beginAtZero: true } // Ensures bars start at 0
-            }
-        }
-    });
-}
-    </script>
-</body>
-</html>
-
-
-
-
-
-
+            <!-- RECORD BUTTON ADDED HERE -->
