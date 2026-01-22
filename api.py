@@ -5,8 +5,12 @@ import requests
 import pandas as pd
 # from email.message import EmailMessage
 from typing import Optional 
-from fastapi import FastAPI
+#from fastapi import FastAPI
+from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+import openai
+from pydub import AudioSegment
 from pydantic import BaseModel
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
@@ -626,6 +630,57 @@ def send_email_tool(to_email: str, subject: str, body: str, attachment_type: str
     result = internal_send_email(to_email, subject, body, attachment_data, attachment_type)
     return result["message"]
 
+# ---- Voice agent added -----
+
+@app.post("/api/voice")
+async def process_audio(file: UploadFile = File(...)):
+    temp_filename = "temp_input.webm"
+    wav_filename = "temp_output.wav"
+    
+    try:
+        # 1. Save the uploaded file temporarily
+        with open(temp_filename, "wb") as buffer:
+            buffer.write(await file.read())
+        # 2. Convert audio to WAV format using pydub
+        # This ensures compatibility with OpenAI's Whisper model
+        audio = AudioSegment.from_file(temp_filename)
+        audio.export(wav_filename, format="wav")
+        # 3. Transcribe audio using OpenAI Whisper
+        with open(wav_filename, "rb") as audio_file:
+            transcript_response = openai.Audio.transcribe(
+                model="whisper-1", 
+                file=audio_file
+            )
+        
+        transcribed_text = transcript_response.get("text", "")
+        if not transcribed_text:
+            raise HTTPException(status_code=400, detail="Could not transcribe audio.")
+        # 4. Generate a summary or response using GPT-4
+        completion_response = openai.ChatCompletion.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": "You are a helpful AI assistant. Summarize the user's input concisely."},
+                {"role": "user", "content": transcribed_text}
+            ]
+        )
+        
+        ai_response = completion_response['choices'][0]['message']['content']
+        # 5. Return the result
+        return JSONResponse(content={
+            "transcription": transcribed_text,
+            "response": ai_response
+        })
+    except Exception as e:
+        print(f"Error processing audio: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        # 6. Cleanup: Always delete temporary files
+        if os.path.exists(temp_filename):
+            os.remove(temp_filename)
+        if os.path.exists(wav_filename):
+            os.remove(wav_filename)
+
+
 
 # --- 8. CHAT AGENT (UPDATED) ---
 
@@ -759,6 +814,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
     
+
 
 
 
