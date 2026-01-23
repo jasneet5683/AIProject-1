@@ -14,5 +14,5 @@ apscheduler
 python-multipart
 pydantic 
 openai 
-pydub
+
 
