@@ -5,7 +5,7 @@ set -o errexit
 echo "Build started..."
 
 # 1. Install Python Dependencies
-pip install -r requirements.txt
+pip install -r requirements.txt --no-color
 
 # 2. Download and Install FFmpeg (Static Build)
 if [ ! -f ffmpeg/ffmpeg ]; then
