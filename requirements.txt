@@ -15,4 +15,4 @@ python-multipart
 pydantic 
 openai 
 pydub
-httpx
+
